@@ -64,6 +64,20 @@ die Route kommt serverseitig von OSRM (`RoutingClient`). Bei `PATCH seats_total`
 `seats_available = seats_total − angenommene`; Status `full`/`open` nachziehen. Die Abfahrtszeit-Änderung
 ändert die Route nicht.
 
+Umsetzung Phase 3 (Klarstellungen, keine Abweichung von den Pfaden/Formen):
+
+* `PATCH`/`DELETE` auf fremde oder unbekannte Fahrten → 404 (kein Orakel). `DELETE` ist idempotent
+  (bereits stornierte eigene Fahrt → wieder 204). `PATCH` mit unveränderter `departure_time` zählt nicht als
+  Änderung (kein 409 `has_accepted_requests`). `null` in `PATCH`-Feldern und unbekannte Felder → 422.
+* `POST /api/rides`: OSRM wird **vor** dem ersten Schreibzugriff aufgerufen (Fehler speichern nichts) und die
+  DB-Verbindung währenddessen freigegeben. Wird das Konto in dieser Zeit gelöscht → 401 `unauthorized`.
+  `departure_time` braucht eine Zeitzone und wird als UTC gespeichert; `seats` muss eine Ganzzahl sein.
+* `distance_km` auf 0,1 km, `duration_min` auf 0,1 min gerundet. Ist die Linie zu kurz für `ST_Simplify`,
+  wird die unvereinfachte Linie geliefert.
+* Sperr-Reihenfolge wie vorgeschrieben: erst Fahrtzeile (`FOR UPDATE`), dann Anfragen.
+* Noch offen (Phase 7): Rate-Limit **pro Nutzer** für `POST /api/rides`; bis dahin schützt nur das globale
+  IP-Limit.
+
 ## Matching (Phase 4) – Anmeldung erforderlich
 
 `GET /api/match?lat=&lon=&time_from=&time_to=&min_seats=1&limit=20` (`limit` 1–50, begrenzt nur die Ausgabe)

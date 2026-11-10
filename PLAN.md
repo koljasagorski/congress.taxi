@@ -1,6 +1,6 @@
 # PLAN – Mitfahrer-Matching für den 40C3
 
-Stand: 2026-11-10 · Status: **Phase 1 abgeschlossen** · Teilstand läuft auf Proxmox (hel, CT 220) unter https://congress.sgr.ski (nur `/api/health`)
+Stand: 2026-11-10 · Status: **Phasen 1–3 abgeschlossen** · Teilstand läuft auf Proxmox (hel, CT 220) unter https://congress.sgr.ski (nur `/api/health`)
 
 Dieses Dokument hält Phasen, Annahmen, Entscheidungen und offene Punkte fest.
 Alles hier ist bewusst knapp; Details stehen im README (ab Phase 8).
@@ -115,7 +115,7 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
 
 - [x] **Phase 1** Repo-Skelett, Compose (db + osrm + api, Health), Migrationen, CI
 - [x] **Phase 2** Auth, Einwilligung, Konto löschen
-- [ ] Phase 3 Fahrten anlegen inkl. OSRM-Route
+- [x] **Phase 3** Fahrten anlegen/listen/ändern/stornieren inkl. OSRM-Route und Snap-Prüfung
 - [ ] Phase 4 Matching (Vorfilter + Umweg) inkl. Randfall-Tests
 - [ ] Phase 5 Anfragen/Accept mit Locking, Kontaktfreigabe
 - [ ] Phase 6 Frontend
@@ -151,6 +151,14 @@ Wird pro Phase ergänzt – nur Dinge, die wirklich ausgeführt wurden.
 
 **Nicht geprüft:** `germany-latest` (Ressourcen nur extrapoliert, s. o.), `docker compose` unter Coolify.
 Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (siehe unten).
+
+### Phase 3 (lokal: macOS arm64, echtes PostGIS + OSRM Hamburg)
+
+- `make lint` (ruff, ruff format, mypy strict) grün; `make test`: **270 Tests grün** (inkl. Phase 2 und Live-Tests
+  gegen echtes OSRM: `test_rides_live.py`, `test_osrm_live.py`).
+- Geprüft: Anlegen mit Route und Snap-Prüfung (Start und Event), Fehlerpfade speichern nichts, Ändern/Stornieren mit
+  Sperr-Reihenfolge Fahrt vor Anfragen, Fremdzugriff → 404, Pagination von `GET /api/rides/mine`.
+- Offen für Phase 7: Rate-Limit pro Nutzer für `POST /api/rides` (bisher nur das globale IP-Limit vorgesehen).
 
 ## Deployment auf Proxmox (hel) – Teilstand ausgeführt am 2026-11-10
 

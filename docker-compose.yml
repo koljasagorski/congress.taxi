@@ -72,8 +72,11 @@ services:
       db:
         condition: service_healthy
     ports:
-      # Phase 1/Dev: direkter Zugriff auf localhost; ab Phase 7 nur noch über Caddy
-      - "127.0.0.1:${API_PORT:-8000}:8000"
+      # Standard: nur localhost. Auf der Proxmox-Zielmaschine (deploy/hel/) bindet API_BIND die
+      # interne Adresse, damit der Rand-Caddy auf einem anderen Gast die API erreicht – nie 0.0.0.0.
+      # Veröffentlichte Docker-Ports umgehen die nft-input-Kette: Zugriffsbeschränkung auf den
+      # Rand-Caddy macht dort die forward-Regel in deploy/hel/nftables.conf.
+      - "${API_BIND:-127.0.0.1}:${API_PORT:-8000}:8000"
     healthcheck:
       test:
         - CMD

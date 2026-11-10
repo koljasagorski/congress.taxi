@@ -1,0 +1,24 @@
+
+# ── Mitfahrer-Matching 40C3 (congress.sgr.ski) — Stack in CT 220 `congress` ──
+# Ziel ist die API auf 10.10.10.80:8000 (Firewall dort: 8000 nur von sgr = 10.10.10.70, siehe
+# congress.taxi/deploy/hel/nftables.conf). Caddy terminiert TLS; es gibt bewusst keine `log`-Direktive
+# (Datenschutz: keine IPs/Query-Strings im Rand-Log).
+# TEILSTAND: Bis das Frontend (Phase 6) und die übrigen Routen live sind, geht nur der Liveness-Pfad
+# durch; alles andere – auch /api/docs, /api/openapi.json und /api/health/ready – bleibt zu.
+congress.sgr.ski {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
+	@live path /api/health
+	handle @live {
+		reverse_proxy 10.10.10.80:8000 {
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+	handle {
+		respond "congress.sgr.ski – im Aufbau" 503
+	}
+}

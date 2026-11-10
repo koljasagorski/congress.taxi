@@ -30,3 +30,7 @@ web/test-results/
 .DS_Store
 .idea/
 .vscode/
+
+# macOS-/Editor-Kopien von .env-Dateien (Name mit Leerzeichen, z. B. ".env 2") – enthalten echte Secrets
+.env *
+*.env

@@ -23,6 +23,10 @@ Siehe Phasen-Checkliste in `PLAN.md`. Jede Phase = ein Conventional-Commit, grü
 - **OSRM snappt Punkte außerhalb des Extrakts still auf ferne Straßen** (München → 592 km Snap im
   Hamburg-Extrakt). Jede Koordinate muss gegen `MATCH_MAX_SNAP_DISTANCE_M` geprüft werden.
 - GNU Make 3.81 (macOS): keine Make-4-Features. Kein `sed -i` in Skripten (macOS/Linux verschieden).
+- **Nie `git add -A` blind:** Am 2026-11-10 landete eine macOS-Kopie `.env 2` (Dev-Secrets) in `f804b7f` und damit im
+  öffentlichen Repo. Entfernt, `.gitignore` (`.env *`) und Test `test_repo_hygiene.py` ergänzt, Dev-Secrets rotiert;
+  die Historie bleibt (kein Force-Push) – alte Werte gelten als verbrannt. Produktiv-Secrets entstehen auf dem Gast
+  und waren nie betroffen. Vor jedem Commit `git status` lesen.
 - Logs dürfen keine Koordinaten/IPs enthalten (Uvicorn `--no-access-log`, eigenes Request-Log ohne Query).
 
 ## Server (hel) – Kurzfassung

@@ -95,6 +95,25 @@ Ablauf wörtlich nach Auftrag: (1) Pickup per `snap_or_error` prüfen · (2) SQL
 `MATCH_ROUTE_TRIM_START_M` Meter gekürzt** (Datenschutz: Wohnadresse des Fahrers). Fehler: 422 `validation_error`,
 422 `outside_coverage`, 503 `routing_unavailable`. Keine Treffer → `{"items": [], "total": 0}`.
 
+**Gröbere Umweg-Werte (Standort-Orakel, Sicherheitsreview):** Die Antwort gibt den Umweg bewusst ungenau aus:
+`detour_km` in **0,5-km-Schritten** (kaufmännisch gerundet, z. B. `1.5`), `detour_minutes` **ganzzahlig** (JSON-Integer),
+`detour_ratio` auf **2 Nachkommastellen** (bei Basisdistanz 0 auf 999 gedeckelt). Filter (`acceptable`) und Sortierung
+im Server rechnen weiter mit den exakten Werten; Einträge mit gleich angezeigtem Umweg können daher in anderer Reihenfolge
+stehen, als die Rundung vermuten lässt. Hilfsfunktionen: `coarse_detour_km/minutes/ratio` in `app/services/matching.py`.
+**Phase 5:** `RequestOut.detour_km`/`detour_minutes` sieht die anfragende Person ebenfalls zu einem selbst gewählten
+Abholpunkt; dort dieselben Hilfsfunktionen verwenden (gleiche Granularität), gespeichert werden weiter exakte Werte.
+**Frontend (Phase 6):** `detour_minutes` ist jetzt ganzzahlig, `detour_km` ein Vielfaches von 0,5 – Anzeige entsprechend
+(„≈ 1,5 km“, „≈ 4 min“), keine Nachkommastellen für Minuten.
+
+**Bekannte Grenze (Abtasten des Routenanfangs):** Die Anzeige-Route ist am Anfang gekürzt, Vorfilter und Umweg nutzen aber
+die ungekürzte Route. Wer viele Abholpunkte abfragt, kann aus „Treffer ja/nein“ und den Umweg-Werten den Start der Route
+grob (größenordnungsmäßig einige hundert Meter bis wenige km, je nach Rundung) eingrenzen. Gegenmaßnahmen: Anmeldepflicht,
+gröbere Ausgabe (s. o.), Rate-Limit `RATE_LIMIT_MATCH_PER_MIN` (Phase 7) – Abtasten wird gebremst, nicht verhindert.
+Details: Docstring `app/services/matching.py`, `PLAN.md` Annahme 18.
+
+**Demo-Daten:** `make seed-demo` (`scripts/seed_demo.py`) legt über die laufende API Demo-Konten (`@demo.invalid`, nur
+außerhalb von `APP_ENV=production` registrierbar) und Fahrten an; verweigert Produktion und Nicht-Loopback-Ziele.
+
 ## Anfragen (Phase 5) – Anmeldung erforderlich
 
 **RequestOut**: `{id, ride_id, status, pickup{lat,lon}, detour_km, detour_minutes, created_at, decided_at, ride{departure_time, seats_available, driver_display_name}, rider{display_name}, counterpart_email}`

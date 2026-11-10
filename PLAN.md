@@ -104,6 +104,14 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
     Start aus (Einzelinstanz-Betrieb), damit `make up` ohne Extra-Schritt funktioniert.
 17. **Linear.** Das Linear-MCP ist in dieser Umgebung nicht authentifiziert und das Repo hat
     keinen `## Linear`-Abschnitt; Issues werden daher nicht gepflegt (TODO für den Betreiber).
+18. **Matching: Standort-Orakel und Abtasten des Routenanfangs (Phase 4).** Die Anzeige-Route wird am Anfang um
+    `MATCH_ROUTE_TRIM_START_M` gekürzt (entlang der Route, in Metern). Das schützt die **Anzeige**, nicht gegen aktives
+    Abtasten: Vorfilter (`ST_DWithin` auf der vollen Route) und Umweg (ab dem exakten Fahrer-Start) brauchen die
+    ungekürzte Route. Wer viele Abholpunkte abfragt, kann aus „Treffer ja/nein“ und den Umweg-Werten den Start grob
+    (einige hundert Meter bis wenige km, je nach Rundung) eingrenzen. Entschärft durch (a) Anmeldepflicht, (b) **gröbere Ausgabe**
+    (`detour_km` in 0,5-km-Schritten, `detour_minutes` ganzzahlig, `detour_ratio` 2 Stellen; Filter und Sortierung
+    intern exakt), (c) Rate-Limit `RATE_LIMIT_MATCH_PER_MIN` (Phase 7). Verbleibende Grenze bewusst hingenommen
+    (kurzlebige Event-App); README/Datenschutzdoku nennen sie in Phase 8.
 
 ## Offene Fragen (nicht blockierend)
 
@@ -116,7 +124,7 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
 - [x] **Phase 1** Repo-Skelett, Compose (db + osrm + api, Health), Migrationen, CI
 - [x] **Phase 2** Auth, Einwilligung, Konto löschen
 - [x] **Phase 3** Fahrten anlegen/listen/ändern/stornieren inkl. OSRM-Route und Snap-Prüfung
-- [ ] Phase 4 Matching (Vorfilter + Umweg) inkl. Randfall-Tests
+- [x] **Phase 4** Matching (Vorfilter + Umweg) inkl. Randfall-Tests, Demo-Daten (`make seed-demo`)
 - [ ] Phase 5 Anfragen/Accept mit Locking, Kontaktfreigabe
 - [ ] Phase 6 Frontend
 - [ ] Phase 7 Retention-Cleanup, Backup, Security-Header, Rate-Limits
@@ -159,6 +167,16 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
 - Geprüft: Anlegen mit Route und Snap-Prüfung (Start und Event), Fehlerpfade speichern nichts, Ändern/Stornieren mit
   Sperr-Reihenfolge Fahrt vor Anfragen, Fremdzugriff → 404, Pagination von `GET /api/rides/mine`.
 - Offen für Phase 7: Rate-Limit pro Nutzer für `POST /api/rides` (bisher nur das globale IP-Limit vorgesehen).
+
+### Phase 4 (lokal: macOS arm64, echtes PostGIS + OSRM Hamburg)
+
+- `make lint` grün; `make test` grün (Zahlen im Commit), inkl. Live-Tests gegen echtes OSRM (`test_match_osrm_live.py`).
+- Geprüft: SQL-Vorfilter nutzt den GiST-Index (Plan-Test), Umweg je Kandidat parallel (max. 8), Randfälle
+  (Länge-0-Route, `inf`-Verhältnis, Kandidat ohne Route, OSRM nicht erreichbar → 503, Pickup außerhalb → 422),
+  gekürzte Anzeige-Route, Rundung der Umweg-Werte (Filter/Sortierung exakt).
+- `make seed-demo` real gegen eine frische Scratch-Datenbank und eine lokal gestartete API (`APP_ENV=development`)
+  ausgeführt: 7 Konten (`@demo.invalid`), 6 Fahrten, Kontrollsuche ab Altona 6 Treffer; zweiter Lauf idempotent
+  (0 neu). **Erst nach Phase 5 möglich:** Demo-Anfragen/-Annahmen (das Skript legt noch keine Anfragen an).
 
 ## Deployment auf Proxmox (hel) – Teilstand ausgeführt am 2026-11-10
 

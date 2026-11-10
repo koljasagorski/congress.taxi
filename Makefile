@@ -53,8 +53,8 @@ fmt: ## ruff format + Autofixes
 osrm-prepare: ## OSRM-Daten herunterladen und vorbereiten (FORCE=1 erzwingt Neuaufbau)
 	@sh scripts/osrm-prepare.sh
 
-seed-demo: ## Demo-Fahrer/-Mitfahrer anlegen (ab Phase 4)
-	@echo "seed-demo ist noch nicht implementiert (Phase 4)." >&2; exit 1
+seed-demo: ## Demo-Fahrer/-Mitfahrer über die laufende API anlegen (nie in Produktion; SEED_ARGS=--base-url …)
+	cd api && uv run python ../scripts/seed_demo.py $(SEED_ARGS)
 
 clean-data: ## ACHTUNG: löscht Datenbank-Volume (nicht die OSRM-Daten)
 	$(COMPOSE) down -v

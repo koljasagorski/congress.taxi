@@ -7,10 +7,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 
-from app.api import health
+from app.api import auth, health, match, me, requests, rides
+from app.api import config as config_api
 from app.config import get_settings
 from app.db import dispose_engine
 from app.errors import install_error_handlers
+from app.middleware.security import install_security
 from app.routing import close_routing_client
 
 logger = logging.getLogger("app.request")
@@ -35,6 +37,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     install_error_handlers(app)
+    install_security(app)
 
     @app.middleware("http")
     async def request_log(
@@ -56,6 +59,12 @@ def create_app() -> FastAPI:
         return response
 
     app.include_router(health.router)
+    app.include_router(config_api.router)
+    app.include_router(auth.router)
+    app.include_router(me.router)
+    app.include_router(rides.router)
+    app.include_router(match.router)
+    app.include_router(requests.router)
     return app
 
 

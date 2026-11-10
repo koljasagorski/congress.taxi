@@ -18,20 +18,32 @@ logger = logging.getLogger("app.errors")
 
 
 class ApiError(Exception):
-    def __init__(self, status_code: int, code: str, message: str) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        code: str,
+        message: str,
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.code = code
         self.message = message
+        self.headers = headers
 
 
 def error_response(
-    status_code: int, code: str, message: str, details: list[dict[str, Any]] | None = None
+    status_code: int,
+    code: str,
+    message: str,
+    details: list[dict[str, Any]] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     body: dict[str, Any] = {"code": code, "message": message}
     if details:
         body["details"] = details
-    return JSONResponse(status_code=status_code, content={"error": body})
+    return JSONResponse(status_code=status_code, content={"error": body}, headers=headers)
 
 
 _HTTP_CODES = {
@@ -50,7 +62,7 @@ _HTTP_CODES = {
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def _api_error(_: Request, exc: ApiError) -> JSONResponse:
-        return error_response(exc.status_code, exc.code, exc.message)
+        return error_response(exc.status_code, exc.code, exc.message, headers=exc.headers)
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:

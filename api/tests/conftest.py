@@ -8,21 +8,35 @@ Verbindungsdaten kommen aus den POSTGRES_*-Variablen (Host Standard: localhost).
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
 
 import asyncpg
+import httpx
+import pytest
 import pytest_asyncio
+
+from tests.fakes import FakeRouting
 
 API_DIR = Path(__file__).resolve().parent.parent
 _BASE_DB = os.environ.get("POSTGRES_DB", "mitfahrer")
-TEST_DB = f"{_BASE_DB}_test"
+# TEST_DB_SUFFIX trennt parallele Testläufe (z. B. mehrere Entwickler/Agenten gegen denselben
+# Postgres): `make test TEST_DB_SUFFIX=p3` nutzt die Datenbank `<POSTGRES_DB>_test_p3`.
+_SUFFIX = os.environ.get("TEST_DB_SUFFIX", "")
+if _SUFFIX and not re.fullmatch(r"[a-z0-9_]{1,16}", _SUFFIX):
+    raise RuntimeError("TEST_DB_SUFFIX darf nur [a-z0-9_] enthalten (max. 16 Zeichen)")
+TEST_DB = f"{_BASE_DB}_test" + (f"_{_SUFFIX}" if _SUFFIX else "")
 
 # MUSS vor dem ersten Import von app.* passieren (Settings sind gecacht).
 os.environ["POSTGRES_DB"] = TEST_DB
 os.environ["APP_ENV"] = "test"
+# Tests sprechen HTTP (kein TLS) und sollen deterministisch sein: Secure-Cookie und Rate-Limits
+# aus. Rate-Limit-Tests schalten sie gezielt über ein überschriebenes Settings-Objekt wieder an.
+os.environ["COOKIE_SECURE"] = "false"
+os.environ["RATE_LIMIT_ENABLED"] = "false"
 # Standard bewusst nicht 5432: dort läuft auf Entwicklerrechnern oft ein fremder Postgres.
 # 127.0.0.1 statt localhost, damit nicht ::1 (fremder Server) zuerst probiert wird.
 os.environ.setdefault("POSTGRES_HOST", "127.0.0.1")
@@ -118,3 +132,54 @@ async def connect(database: str) -> asyncpg.Connection:
     """Direkte asyncpg-Verbindung (für Schema-Prüfungen)."""
     dsn = {**_admin_dsn(), "database": database}
     return await asyncpg.connect(**dsn)  # type: ignore[arg-type]
+
+
+# --- Fixtures für API-Tests (Vertrag; gemeinsam für alle Phasen) ---
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def clean_db(migrated_database: str) -> AsyncIterator[None]:
+    """Leert die Tabellen vor und nach dem Test (Schema bleibt)."""
+
+    async def _truncate() -> None:
+        conn = await connect(migrated_database)
+        try:
+            await conn.execute("TRUNCATE users, rides, ride_requests RESTART IDENTITY CASCADE")
+        finally:
+            await conn.close()
+
+    await _truncate()
+    yield
+    await _truncate()
+
+
+@pytest.fixture
+def routing() -> FakeRouting:
+    """Deterministischer Routing-Fake (Hamburg-Ebene). Pro Test anpassbar."""
+    return FakeRouting()
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def client(clean_db: None, routing: FakeRouting) -> AsyncIterator[httpx.AsyncClient]:
+    """HTTP-Client gegen die ASGI-App mit Fake-Routing (setzt Limiter und Overrides zurück)."""
+    from app.main import app
+    from app.ratelimit import limiter
+    from app.routing import get_routing_client
+
+    limiter.reset()
+    app.dependency_overrides[get_routing_client] = lambda: routing
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    app.dependency_overrides.clear()
+    limiter.reset()
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def db(clean_db: None) -> AsyncIterator[object]:
+    """Direkte asyncpg-Verbindung zur Test-Datenbank (für Vorbedingungen und Nachprüfungen)."""
+    conn = await connect(TEST_DB)
+    try:
+        yield conn
+    finally:
+        await conn.close()

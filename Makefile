@@ -42,7 +42,7 @@ migrate: ## Alembic-Migrationen im api-Container ausführen
 
 test: fill-secrets db-up ## Tests (startet die DB; OSRM-Live-Tests laufen, wenn OSRM erreichbar ist; liest .env)
 	cd api && set -a && . ../.env && set +a && POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=$$DB_PORT \
-		OSRM_URL=http://127.0.0.1:$$OSRM_PORT uv run pytest
+		OSRM_URL=http://127.0.0.1:$$OSRM_PORT uv run pytest $(PYTEST_ARGS)
 
 lint: ## ruff + mypy
 	cd api && uv run ruff check . && uv run ruff format --check . && uv run mypy app

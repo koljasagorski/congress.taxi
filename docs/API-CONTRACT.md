@@ -33,7 +33,10 @@ Kein Token im Body. Hilfen (fertig, nicht ändern): `app.auth.tokens`, `app.auth
 | `GET /api/me` | – | 200 `{id, display_name, email, created_at}` | 401 |
 | `DELETE /api/me` | – | **204**, Konto + alle Fahrten/Anfragen (CASCADE) gelöscht, Cookie gelöscht | 401 |
 
-E-Mail wird klein geschrieben und getrimmt gespeichert. Passwort-Hash: argon2id (`argon2-cffi`).
+E-Mail wird klein geschrieben und getrimmt gespeichert (zusätzlich nach `email-validator`-Normalisierung; Login normalisiert
+gleich, ungültige Eingaben und NUL-Bytes ergeben dort 401, nie 422/500). Reservierte Domains (`@demo.invalid` …) sind nur
+außerhalb von `APP_ENV=production` zulässig (Seed-Daten); in Produktion 422. `DELETE /api/me` gibt Plätze angenommener
+Mitfahrten zurück (Sperr-Reihenfolge: Fahrt vor Anfrage, Gutschrift erst nach der Sperre). Passwort-Hash: argon2id (`argon2-cffi`).
 Login/Register sind per `rate_limit(...)` (`app/ratelimit.py`) begrenzt: `rate_limit_login_per_min`,
 `rate_limit_register_per_hour`. Bekannte Grenze: E-Mail-Adressen sind nicht verifiziert.
 

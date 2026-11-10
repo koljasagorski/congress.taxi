@@ -58,8 +58,25 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
    vollständig verbergen. Entscheidung (Phase 2): `POST /api/auth/register` antwortet
    immer identisch (202) und loggt **nicht** ein; bei bereits vergebener E-Mail wird nichts
    angelegt. Login-Fehler sind generisch, Timing wird per Dummy-Hash angeglichen.
-   **Bekannte Grenze:** E-Mail-Adressen werden nicht verifiziert (jemand kann fremde Adressen
-   registrieren); wer sich vertippt, merkt es erst beim Login. Wird im README genannt.
+   **Bekannte Grenze (E-Mail-Squatting/Pre-Hijacking):** E-Mail-Adressen werden nicht
+   verifiziert und es gibt keinen Mailversand. Wer eine fremde Adresse zuerst registriert,
+   „besetzt“ sie (die echte Person kann sich dann nicht mit dieser Adresse registrieren) und
+   kennt das Passwort. Ein Gegenüber kann nach beidseitiger Bestätigung also eine Adresse
+   erhalten, die nicht der Person gehört, mit der es sich verabredet hat.
+   Wer sich vertippt, merkt es erst beim Login. Bewusst hingenommen (kurzlebige Event-App, kein
+   Mailserver, Datensparsamkeit); Gegenmaßnahmen sind Rate-Limit (Phase 2/7) und die
+   Kontaktfreigabe erst nach beidseitiger Bestätigung. README und Datenschutzdokumentation
+   nennen die Grenze in Phase 8.
+   **E-Mail-Syntax je Umgebung:** `email-validator` lehnt reservierte Domains (`.invalid`,
+   `.local`, `.test` …) ab. In `APP_ENV=production` bleibt das so (strikt). In `development`
+   und `test` sind sie erlaubt (u. a. für `seed_demo` in Phase 4 mit `@demo.invalid`); die
+   Ausnahme gilt nur für ASCII-Domains mit reserviertem Suffix, der Local-Part wird weiter
+   streng geprüft. Es gibt keine DNS-Zustellbarkeitsprüfung. Umsetzung: `app/schemas/auth.py`
+   (Version 2.3 der Bibliothek kennt keinen Schalter dafür).
+   **Konto löschen und Plätze:** `DELETE /api/me` sperrt zuerst die Fahrten (id-sortiert), löscht
+   danach die Anfragen mit `DELETE … RETURNING` und schreibt nur tatsächlich gelöschte
+   `accepted`-Anfragen gut (`release_seats_of_rider` in `app/api/me.py`). Phase 5 darf diese
+   Funktion durch ihren eigenen Mechanismus ersetzen.
 7. **Backups enthalten personenbezogene Daten.** Rotation (`BACKUP_KEEP_DAYS`, Standard 7)
    muss kürzer sein als die Retention-Frist; nach einem Restore muss der Cleanup-Job erneut
    laufen (dokumentiert, Phase 7).
@@ -97,7 +114,7 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
 ## Phasen
 
 - [x] **Phase 1** Repo-Skelett, Compose (db + osrm + api, Health), Migrationen, CI
-- [ ] Phase 2 Auth, Einwilligung, Konto löschen
+- [x] **Phase 2** Auth, Einwilligung, Konto löschen
 - [ ] Phase 3 Fahrten anlegen inkl. OSRM-Route
 - [ ] Phase 4 Matching (Vorfilter + Umweg) inkl. Randfall-Tests
 - [ ] Phase 5 Anfragen/Accept mit Locking, Kontaktfreigabe

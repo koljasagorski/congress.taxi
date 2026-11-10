@@ -12,6 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from app.auth.deps import CurrentUser, SessionDep, SettingsDep
+from app.ratelimit import user_rate_limit
 from app.routing import RoutingClient, get_routing_client
 from app.schemas.match import MatchList, MatchOut, MatchQuery
 from app.services.geo import snap_or_error
@@ -25,7 +26,11 @@ from app.services.matching import (
 router = APIRouter(prefix="/api/match", tags=["match"])
 
 
-@router.get("", response_model=MatchList)
+@router.get(
+    "",
+    response_model=MatchList,
+    dependencies=[Depends(user_rate_limit("match_user", "rate_limit_match_user_per_min", 60))],
+)
 async def match(
     query: Annotated[MatchQuery, Query()],
     user: CurrentUser,

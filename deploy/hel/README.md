@@ -52,6 +52,23 @@ git archive --format=tar HEAD | ssh -J hel -i ~/.ssh/patchletter_proxmox root@10
 (Hamburg), `API_BIND=10.10.10.80`, `DOMAIN`, `TRUSTED_PROXIES=10.10.10.70`, bereitet OSRM nur bei fehlenden Daten vor
 und startet den Stack. Es gibt nie `.env` aus. **Immer nur einen CI-geprüften Commit ausrollen.**
 
+### Reverse-Proxy-Vertrauen und Rate-Limits (Phase 7)
+
+Auf `hel` läuft **kein eigener Caddy** im Gast: das Compose-Profil `proxy` und `docker-compose.proxy.yml` bleiben
+aus (`COMPOSE_PROFILES`/`COMPOSE_FILE` in `.env` nicht setzen). Der Rand-Caddy auf CT 180 (`10.10.10.70`) spricht die
+API direkt an und setzt `X-Forwarded-For` (`header_up X-Forwarded-For {remote_host}`, überschreibt gefälschte Werte).
+Damit das Rate-Limit je Client zählt, muss die API genau diesem einen Proxy vertrauen:
+
+```
+TRUSTED_PROXIES=10.10.10.70      # nur diese Adresse (/32), nie ein ganzes Netz wie 10.10.10.0/24
+APP_ENV=production               # schaltet /api/docs, /api/openapi.json und ReDoc in der API aus (404)
+```
+
+`ausrollen.sh` setzt beides (`EDGE_PROXY`, Standard `10.10.10.70`). Ein zu weiter Wert (z. B. das Gastnetz) würde jedem
+Container dort erlauben, seine Client-Adresse zu fälschen. Ohne den Wert zählen **alle** Besucher als ein Client (die
+API warnt einmal im Log). Die API-Port-Bindung (`API_BIND=10.10.10.80`) bleibt, weil der Rand-Caddy sie von außerhalb
+des Gasts erreichen muss; die Firewall-Regel in `nftables.conf` begrenzt sie auf `10.10.10.70`.
+
 ## Rand-Caddy (CT 180 `sgr`)
 
 Der Block steht in `deploy/hel/sgr-caddy-block.Caddyfile` und wurde ans Ende von
@@ -60,7 +77,8 @@ dortigen Muster: Sicherung → Datei neben die alte legen → `caddy validate` �
 `dns.` bleiben unterbrechungsfrei). Sicherung dieser Änderung auf CT 180: `/opt/sgr/caddy/etc/Caddyfile.vor-congress`.
 
 Im **Teilstand** reicht der Rand nur `/api/health` durch; `/`, `/api/docs`, `/api/openapi.json` und
-`/api/health/ready` liefern `503 „im Aufbau“`. Das wird mit Phase 6/7 geöffnet (Frontend, Security-Header,
+`/api/health/ready` liefern `503 „im Aufbau“` (die API selbst antwortet auf die ersten beiden in `production` ohnehin
+mit 404; `/api/health/ready` bleibt auch beim Öffnen des Rands von außen zu). Das wird mit Phase 6/7 geöffnet (Frontend, Security-Header,
 Rate-Limits). Der Rand hat keine `log`-Direktive (keine IPs im Log).
 
 ## DNS (Cloudflare, Zone `sgr.ski`, „DNS only“, TTL 60)

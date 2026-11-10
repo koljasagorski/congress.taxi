@@ -12,6 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response
 
 from app.auth.deps import CurrentUser, SessionDep, SettingsDep
+from app.ratelimit import user_rate_limit
 from app.routing import RoutingClient, get_routing_client
 from app.schemas.common import Page
 from app.schemas.rides import RideCreate, RideOut, RidePatch
@@ -22,7 +23,13 @@ router = APIRouter(prefix="/api/rides", tags=["rides"])
 RoutingDep = Annotated[RoutingClient, Depends(get_routing_client)]
 
 
-@router.post("", status_code=201)
+@router.post(
+    "",
+    status_code=201,
+    dependencies=[
+        Depends(user_rate_limit("rides_create", "rate_limit_rides_create_per_hour", 3600))
+    ],
+)
 async def create_ride(
     body: RideCreate,
     user: CurrentUser,

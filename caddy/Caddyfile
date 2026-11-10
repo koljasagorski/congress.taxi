@@ -1,0 +1,108 @@
+# ============================================================================
+# Reverse Proxy für den Mitfahrer-Matching-Stack (Compose-Profil "proxy")
+#
+#   COMPOSE_PROFILES=proxy make up        (oder: docker compose --profile proxy up -d)
+#
+# Was Caddy hier tut
+#   /api/*      -> api:8000   (FastAPI; Request-Body auf 64 KB begrenzt, zusätzlich in der API selbst;
+#                              /api/health/ready ist von außen gesperrt)
+#   alles andere -> web:8080  (Frontend, nginx)
+#   * automatisches TLS (Let's Encrypt; bei DOMAIN=localhost interne CA, Browser-Warnung normal)
+#   * Security-Header an JEDER Antwort, auch an Fehlerseiten (502 ...): CSP, HSTS,
+#     X-Content-Type-Options, Referrer-Policy, Permissions-Policy, frame-ancestors 'none'
+#   * KEIN Access-Log (Datenschutz: keine IP, kein Query-String mit Koordinaten). Auch die
+#     Betriebslogs sind auf WARN begrenzt und enthalten kein "request"-Objekt (siehe unten).
+#
+# Umgebungsvariablen (alle über docker-compose.yml aus .env, siehe .env.example)
+#   CADDY_SITE_ADDRESS     Site-Adresse; Standard = DOMAIN. "http://host" schaltet TLS ab (hinter
+#                          einem Rand-Proxy, der TLS terminiert).
+#   HTTP_PORT, HTTPS_PORT  Ports, auf denen Caddy im Container UND auf dem Host lauscht (80/443).
+#                          Nicht-Standard-Ports schalten die Let's-Encrypt-HTTP-Prüfung ab; dann
+#                          DNS-01 oder einen Rand-Proxy verwenden.
+#   TILE_ORIGIN            wird von entrypoint.sh aus TILE_URL abgeleitet (caddy/tile-origin.sh)
+#   CADDY_TRUSTED_PROXIES  Leerzeichen-getrennte IPs/CIDRs von Proxys VOR diesem Caddy, deren
+#                          X-Forwarded-For geglaubt wird. Standard: nur Loopback (= niemand).
+#   CADDY_HSTS             Wert des HSTS-Headers (Standard max-age=31536000). Für lokale Tests mit
+#                          DOMAIN=localhost "max-age=0" setzen, damit der Browser localhost nicht
+#                          dauerhaft auf HTTPS festlegt.
+#
+# Client-IP für das Rate-Limit der API: Caddy setzt X-Forwarded-For. Die API sieht als Peer die
+# Container-Adresse von Caddy; damit der Header geglaubt wird, muss TRUSTED_PROXIES (API) genau diese
+# feste Adresse (/32, CADDY_IPV4) enthalten - nie ein ganzes Docker-Netz. docker-compose.proxy.yml
+# setzt das. Sonst teilen sich alle Nutzer ein Limit.
+#
+# Validieren (Wegwerf-Container):
+#   docker run --rm -v "$PWD/caddy:/etc/caddy:ro" -e TILE_ORIGIN=https://tile.example.org \
+#     caddy:2.11.8-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+# ============================================================================
+{
+	# Admin-API aus (kein Port 2019 im Container, kein Reload zur Laufzeit nötig)
+	admin off
+
+	http_port {$HTTP_PORT:80}
+	https_port {$HTTPS_PORT:443}
+
+	servers {
+		# Nur diesen Proxys wird X-Forwarded-For geglaubt; rechts-nach-links auswerten
+		trusted_proxies static {$CADDY_TRUSTED_PROXIES:127.0.0.1/32}
+		trusted_proxies_strict
+	}
+
+	# Betriebslog: nur WARN und höher, ohne das "request"-Objekt (enthält IP, URI, Header).
+	log {
+		level WARN
+		format filter {
+			wrap console
+			request delete
+		}
+	}
+}
+
+# Sicherheits-Header: für normale Antworten UND für Fehlerseiten (handle_errors) importiert.
+(security_headers) {
+	header {
+		# Content-Security-Policy: nur eigene Quellen; Kacheln vom Tile-Server aus TILE_URL;
+		# style-src 'unsafe-inline' wegen Leaflet (Inline-Styles); script-src OHNE unsafe-*.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: {$TILE_ORIGIN:}; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		Strict-Transport-Security "{$CADDY_HSTS:max-age=31536000}"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		# Standortfreigabe bleibt für die eigene Seite möglich ("Mein Standort"), alles andere aus
+		Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=()"
+		-Server
+		-Via
+	}
+}
+
+{$CADDY_SITE_ADDRESS:localhost} {
+	import security_headers
+	encode zstd gzip
+
+	# /api/health/ready (DB + OSRM) ist nur für interne Prüfungen: Es belegt eine DB-Verbindung,
+	# ruft OSRM auf und nennt die PostGIS-Version. Von außen nicht erreichbar (der Docker-Healthcheck
+	# der API läuft direkt im Container und braucht nur /api/health).
+	@ready path /api/health/ready /api/health/ready/
+	handle @ready {
+		respond 404
+	}
+
+	@api path /api /api/*
+	handle @api {
+		request_body {
+			max_size 64KB
+		}
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:8080
+	}
+
+	# Fehlerseiten (z. B. 502, wenn api/web gerade nicht erreichbar sind): knapp, ohne Details,
+	# aber mit denselben Sicherheits-Headern.
+	handle_errors {
+		import security_headers
+		respond "{err.status_code} {err.status_text}" {err.status_code}
+	}
+}

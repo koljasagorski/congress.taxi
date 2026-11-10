@@ -1,6 +1,6 @@
 # PLAN – Mitfahrer-Matching für den 40C3
 
-Stand: 2026-11-10 · Status: **Phasen 1–3 abgeschlossen** · Teilstand läuft auf Proxmox (hel, CT 220) unter https://congress.sgr.ski (nur `/api/health`)
+Stand: 2026-11-10 · Status: **Phasen 1–5 und 7 abgeschlossen (Phase 6 Frontend und 8 offen)** · Teilstand läuft auf Proxmox (hel, CT 220) unter https://congress.sgr.ski (nur `/api/health`)
 
 Dieses Dokument hält Phasen, Annahmen, Entscheidungen und offene Punkte fest.
 Alles hier ist bewusst knapp; Details stehen im README (ab Phase 8).
@@ -87,8 +87,23 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
    Uvicorn-Access-Log ist aus (`--no-access-log`); eigenes Request-Log schreibt nur
    Methode, Routen-Template, Status, Dauer – keine IP, kein Query. Caddy-Access-Log wird
    in Phase 7 entsprechend abgeschaltet/gefiltert.
-9. **Rate-Limit.** In-Memory, daher **ein** Uvicorn-Worker (dokumentierte Grenze). Echte
-   Client-IP nur aus `X-Forwarded-For`, wenn der direkte Peer in `TRUSTED_PROXIES` steht.
+9. **Rate-Limit (Phase 7).** In-Memory, daher **ein** Uvicorn-Worker (dokumentierte Grenze). Echte
+   Client-IP nur aus `X-Forwarded-For`, wenn der direkte Peer in `TRUSTED_PROXIES` steht – und dort steht
+   **nur die feste Adresse des Proxys (/32)**, nie ein Docker-/LAN-Netz: Mit `COMPOSE_PROFILES=proxy` +
+   `COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml` hat Caddy im Netz `proxy` (festes Subnetz,
+   `CADDY_IPV4`) eine feste Adresse, die API veröffentlicht keinen Host-Port und `TRUSTED_PROXIES` ist genau
+   diese Adresse; auf `hel` (Rand-Caddy, kein eigener Caddy) ist es `10.10.10.70` (`deploy/hel/README.md`).
+   Uvicorn läuft mit `--no-proxy-headers` (sonst würde es `X-Forwarded-For` von 127.0.0.1 glauben).
+   Eine Limiter-Tabelle je Name (50 000 Schlüssel); IPv6 nach /64; bei voller Tabelle werden aktive Zähler nie
+   verdrängt (abgelaufene fliegen raus, neue Schlüssel teilen sich sonst einen Eimer, fail-closed). Zusätzlich
+   Limits je normalisierter E-Mail (Login) und je Nutzer (`/api/match`, Fahrt anlegen, Anfrage senden).
+   **Bekannte Grenzen:** (a) Das E-Mail-Limit erlaubt, ein Konto minutenweise für Logins zu sperren, wenn man
+   die Adresse kennt. (b) Ein Angreifer mit sehr vielen Adressen kann eine Tabelle füllen; neue Clients werden
+   dann bis zum Ablauf der Fenster (Registrierung: bis zu 1 h) gemeinsam gedrosselt, bestehende Zähler bleiben.
+   (c) Caddys automatische HTTP→HTTPS-Weiterleitung entsteht außerhalb der Site-Handler und trägt `Server: Caddy`
+   sowie keine Sicherheits-Header (leerer Body, keine Daten).
+   **Swagger/OpenAPI** (`/api/docs`, `/api/openapi.json`) nur außerhalb von `production`: die UI lädt Skripte vom
+   CDN `cdn.jsdelivr.net`.
 10. **Cookie/CSRF.** JWT in HttpOnly-Cookie, `SameSite=Strict`, `Secure` per Env
     abschaltbar (lokales HTTP). Zusätzlich Origin-Prüfung bei schreibenden Requests.
 11. **CSP.** Der Tile-Host in `img-src` wird aus derselben Env (`TILE_URL`) abgeleitet.
@@ -113,12 +128,12 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
     ungekürzte Route. Wer viele Abholpunkte abfragt, kann aus „Treffer ja/nein“ und den Umweg-Werten den Start grob
     (einige hundert Meter bis wenige km, je nach Rundung) eingrenzen. Entschärft durch (a) Anmeldepflicht, (b) **gröbere Ausgabe**
     (`detour_km` in 0,5-km-Schritten, `detour_minutes` ganzzahlig, `detour_ratio` 2 Stellen; Filter und Sortierung
-    intern exakt), (c) Rate-Limit `RATE_LIMIT_MATCH_PER_MIN` (Phase 7). Verbleibende Grenze bewusst hingenommen
+    intern exakt), (c) Rate-Limit `RATE_LIMIT_MATCH_PER_MIN` je IP und `RATE_LIMIT_MATCH_USER_PER_MIN` je Nutzer (Phase 7). Verbleibende Grenze bewusst hingenommen
     (kurzlebige Event-App); README/Datenschutzdoku nennen sie in Phase 8.
     **Phase 5:** `RequestOut.detour_km`/`detour_minutes` (Anlegen, Listen, accept/decline/cancel) nutzen dieselben
     `coarse_detour_*`-Funktionen wie `/api/match`; `422 detour_too_large` entspricht dem Filter `acceptable`. Ein
-    eigener Abholpunkt liefert damit keine genauere Umweg-Information als die Suche. Zusätzlich fehlt noch das enge
-    Rate-Limit für `POST /api/rides/{id}/requests` (Phase 7).
+    eigener Abholpunkt liefert damit keine genauere Umweg-Information als die Suche. Das enge Rate-Limit für
+    `POST /api/rides/{id}/requests` gibt es seit Phase 7 (`RATE_LIMIT_REQUESTS_CREATE_PER_HOUR`, je Nutzer).
 
 ## Offene Fragen (nicht blockierend)
 
@@ -134,7 +149,7 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
 - [x] **Phase 4** Matching (Vorfilter + Umweg) inkl. Randfall-Tests, Demo-Daten (`make seed-demo`)
 - [x] **Phase 5** Anfragen/Accept mit Locking, Kontaktfreigabe (E-Mail erst bei `accepted`, nur Beteiligte; grobe Umweg-Werte)
 - [ ] Phase 6 Frontend
-- [ ] Phase 7 Retention-Cleanup, Backup, Security-Header, Rate-Limits
+- [x] **Phase 7** Retention-Cleanup, Backup (age), Security-Header, Rate-Limits (IP, E-Mail, Nutzer), Caddy
 - [ ] Phase 8 E2E-Tests, README, Datenschutzdoku, Aufräumen
 
 Jede Phase: eigener Conventional-Commit, grüne Tests, sofort pushen.
@@ -173,7 +188,7 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
   gegen echtes OSRM: `test_rides_live.py`, `test_osrm_live.py`).
 - Geprüft: Anlegen mit Route und Snap-Prüfung (Start und Event), Fehlerpfade speichern nichts, Ändern/Stornieren mit
   Sperr-Reihenfolge Fahrt vor Anfragen, Fremdzugriff → 404, Pagination von `GET /api/rides/mine`.
-- Offen für Phase 7: Rate-Limit pro Nutzer für `POST /api/rides` (bisher nur das globale IP-Limit vorgesehen).
+- Rate-Limit pro Nutzer für `POST /api/rides`: seit Phase 7 vorhanden (`RATE_LIMIT_RIDES_CREATE_PER_HOUR`).
 
 ### Phase 4 (lokal: macOS arm64, echtes PostGIS + OSRM Hamburg)
 
@@ -184,6 +199,22 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
 - `make seed-demo` real gegen eine frische Scratch-Datenbank und eine lokal gestartete API (`APP_ENV=development`)
   ausgeführt: 7 Konten (`@demo.invalid`), 6 Fahrten, Kontrollsuche ab Altona 6 Treffer; zweiter Lauf idempotent
   (0 neu). **Erst nach Phase 5 möglich:** Demo-Anfragen/-Annahmen (das Skript legt noch keine Anfragen an).
+
+### Phase 7 (lokal: macOS arm64, Docker Desktop, echtes PostGIS + OSRM Hamburg)
+
+- Integriert aus dem Entwicklungszweig (Squash) und nachgezogen: Rate-Limiter je Name mit fail-closed-Verhalten,
+  Login-Limit je E-Mail, Nutzer-Limits für Match/Fahrt anlegen/Anfrage senden, Docs nur außerhalb `production`,
+  Caddy-Netz mit fester Adresse + `TRUSTED_PROXIES` als /32 (`docker-compose.proxy.yml`), Log-Rotation für alle Dienste,
+  `--no-proxy-headers` im API-Image, `Via`-Header von Caddy entfernt.
+- Ausgeführt: `make lint` grün; `make test` (Gesamtsuite, `REQUIRE_OPS_TESTS=1`, keine Tests übersprungen) – Zahl im
+  Commit. Rate-Limits laufen auch über die echte App (`test_ratelimit_app.py`); Caddy → **echte API** im Wegwerf-Aufbau
+  (`test_security_caddy_api.py`: Header je genau einmal, kein `Server`/`Via`, HTTP→HTTPS, `/api/health/ready` extern 404,
+  Rate-Limit je echtem Client trotz gefälschtem `X-Forwarded-For`).
+- Zusätzlich real ausgeführt: `docker compose … --profile proxy up` (Projektname `p7check`, Hochports) mit
+  `docker-compose.proxy.yml`: Caddy `172.29.71.2`, API `172.29.71.129`, `TRUSTED_PROXIES=172.29.71.2`, API-Port nicht auf dem
+  Host erreichbar, `/api/health/ready` über Caddy 404; danach `down -v`.
+- **Nicht lokal geprüft:** `shellcheck` (nicht installiert; läuft in der CI), Let's-Encrypt-Zertifikate (lokal interne CA),
+  Lauf auf `hel` (nichts ausgerollt), Last/Dauerbetrieb, mehrere Worker.
 
 ## Deployment auf Proxmox (hel) – Teilstand ausgeführt am 2026-11-10
 

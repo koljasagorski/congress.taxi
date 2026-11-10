@@ -1,0 +1,41 @@
+# ============================================================================
+# Härtung für den RAND-Caddy (deploy/hel/: `sgr` in CT 180, der TLS terminiert und auf die API in
+# CT 220 weiterleitet). NICHT Teil des mitgelieferten Caddy-Profils "proxy" und wird vom Container
+# nicht geladen – Vorlage zum Einfügen in den Site-Block `congress.sgr.ski` auf `sgr`, sobald über
+# den Liveness-Pfad hinaus weitere Routen freigegeben werden (siehe deploy/hel/sgr-caddy-block.Caddyfile).
+#
+# Die API begrenzt Request-Bodies (64 KiB) und setzt ihre Security-Header selbst; dieser Block ist
+# die zweite Verteidigungslinie am Rand und trägt, was nur der Rand leisten kann (HSTS, CSP für das
+# Frontend, Body-Limit VOR der Weiterleitung).
+#
+# Einbindung (im Site-Block, vor den `handle`-Blöcken):
+#   import congress_edge_hardening
+# und im /api-Block zusätzlich das Body-Limit:
+#   handle @api {
+#       request_body {
+#           max_size 64KB
+#       }
+#       reverse_proxy 10.10.10.80:8000 {
+#           header_up X-Forwarded-For {remote_host}
+#       }
+#   }
+# TRUSTED_PROXIES der API muss dann 10.10.10.70 enthalten (setzt deploy/hel/ausrollen.sh), sonst
+# teilen sich alle Nutzer ein Rate-Limit.
+# `/api/health/ready` bleibt gesperrt (nur intern), siehe unten.
+# ============================================================================
+(congress_edge_hardening) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=()"
+		-Server
+	}
+
+	@ready path /api/health/ready /api/health/ready/
+	handle @ready {
+		respond 404
+	}
+}

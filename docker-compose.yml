@@ -3,6 +3,14 @@
 
 name: ${COMPOSE_PROJECT_NAME:-mitfahrer}
 
+# Container-Logs rotieren (json-file), damit sie die Platte nicht füllen. Die Anwendungen loggen
+# ohnehin sparsam (keine IPs/Koordinaten); das hier begrenzt nur die Größe.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   db:
     image: ${POSTGIS_IMAGE:-postgis/postgis:16-3.5}
@@ -13,6 +21,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}
     volumes:
       - db-data:/var/lib/postgresql/data
+    logging: *default-logging
     ports:
       # nur localhost (Tests, psql); nie öffentlich binden
       - "127.0.0.1:${DB_PORT:-55432}:5432"
@@ -31,6 +40,7 @@ services:
     ports:
       # nur localhost (Live-Tests, Debugging); OSRM hat keine Authentifizierung
       - "127.0.0.1:${OSRM_PORT:-55000}:5000"
+    logging: *default-logging
     # Ohne vorbereitete Daten klar scheitern statt kryptisch abzustürzen.
     entrypoint: ["/bin/sh", "-c"]
     command:
@@ -76,7 +86,9 @@ services:
       # interne Adresse, damit der Rand-Caddy auf einem anderen Gast die API erreicht – nie 0.0.0.0.
       # Veröffentlichte Docker-Ports umgehen die nft-input-Kette: Zugriffsbeschränkung auf den
       # Rand-Caddy macht dort die forward-Regel in deploy/hel/nftables.conf.
+      #   Mit dem Compose-Profil "proxy" entfällt die Veröffentlichung ganz (docker-compose.proxy.yml).
       - "${API_BIND:-127.0.0.1}:${API_PORT:-8000}:8000"
+    logging: *default-logging
     healthcheck:
       test:
         - CMD
@@ -88,5 +100,103 @@ services:
       retries: 6
       start_period: 20s
 
+  # --- caddy/cleanup (Phase 7) ---
+  # Reverse Proxy mit automatischem TLS. Nur mit Profil "proxy" (COMPOSE_PROFILES=proxy), damit
+  # Port 80/443 nicht kollidiert, wenn davor schon ein Rand-Proxy steht (z. B. deploy/hel/).
+  # Konfiguration und Datenschutz-Hinweise: caddy/Caddyfile. Bewusst kein depends_on auf "web"
+  # (Upstreams werden pro Request aufgelöst; bis das Frontend läuft, liefert Caddy 502).
+  caddy:
+    image: caddy:2.11.8-alpine
+    profiles: ["proxy"]
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/etc/caddy/entrypoint.sh"]
+    environment:
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-${DOMAIN:-localhost}}
+      HTTP_PORT: ${HTTP_PORT:-80}
+      HTTPS_PORT: ${HTTPS_PORT:-443}
+      TILE_URL: ${TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
+      CADDY_TRUSTED_PROXIES: ${CADDY_TRUSTED_PROXIES:-127.0.0.1/32}
+      CADDY_HSTS: ${CADDY_HSTS:-max-age=31536000}
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      # Container und Host nutzen dieselben Portnummern (Weiterleitungen http->https stimmen dann)
+      - "${HTTP_PORT:-80}:${HTTP_PORT:-80}"
+      - "${HTTPS_PORT:-443}:${HTTPS_PORT:-443}"
+    # Nur im Netz "proxy" (nicht zusätzlich "default"): Der Hostname "api" muss für Caddy eindeutig
+    # auf die Adresse im Netz "proxy" zeigen. Dort hängt die API über docker-compose.proxy.yml.
+    networks:
+      proxy:
+        # Feste Adresse: Nur sie darf der API X-Forwarded-For „beglaubigen“ (TRUSTED_PROXIES =
+        # genau diese /32, siehe docker-compose.proxy.yml) – nie ein ganzes Docker-Netz.
+        ipv4_address: ${CADDY_IPV4:-172.29.71.2}
+    depends_on:
+      api:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+    healthcheck:
+      # HTTP-Port: lauscht in beiden Betriebsarten (TLS: Weiterleitung auf https; http://-Adresse:
+      # eigentlicher Dienst), der HTTPS-Port nur im TLS-Betrieb.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 $${HTTP_PORT:-80}"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  # Retention-Cleanup: löscht alle Daten nach EVENT_END_DATE + RETENTION_DAYS_AFTER_EVENT
+  # (Tagesende UTC), alle 6 Stunden. Gleiches Image und gleiche Konfiguration wie die API,
+  # kein Port. Einmalig/manuell: make cleanup  (DRY=1 zählt nur). Logs sparsam: eine Zeile pro Lauf.
+  cleanup:
+    build:
+      context: ./api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      # api führt beim Start die Migrationen aus; erst danach existieren die Tabellen
+      api:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        trap 'exit 0' TERM INT
+        while :; do
+          if python -m app.cleanup; then touch /tmp/cleanup.ok; wait_s=21600; else wait_s=600; fi
+          sleep $$wait_s & wait $$!
+        done
+    healthcheck:
+      # gesund = letzter erfolgreicher Lauf liegt weniger als 7 Stunden zurück
+      test: ["CMD-SHELL", "find /tmp/cleanup.ok -mmin -420 | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    logging: *default-logging
+
+networks:
+  # Eigenes Netz NUR zwischen Caddy und API (kein Eingriff in das Standardnetz): festes Subnetz,
+  # damit Caddy eine feste Adresse hat. Angelegt wird es nur, wenn ein Dienst es nutzt (also nur mit
+  # dem Profil "proxy"). Bei Überschneidung mit einem Hostnetz CADDY_SUBNET/CADDY_IPV4/
+  # CADDY_IP_RANGE gemeinsam ändern. Docker vergibt automatische Adressen nur aus ip_range (obere
+  # Hälfte), sonst bekäme die API (startet vor Caddy) die feste Adresse von Caddy.
+  proxy:
+    ipam:
+      config:
+        - subnet: ${CADDY_SUBNET:-172.29.71.0/24}
+          ip_range: ${CADDY_IP_RANGE:-172.29.71.128/25}
+
 volumes:
   db-data:
+  caddy-data:
+  caddy-config:

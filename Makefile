@@ -58,3 +58,20 @@ seed-demo: ## Demo-Fahrer/-Mitfahrer über die laufende API anlegen (nie in Prod
 
 clean-data: ## ACHTUNG: löscht Datenbank-Volume (nicht die OSRM-Daten)
 	$(COMPOSE) down -v
+
+# --- Betrieb (Phase 7) ---
+# ACHTUNG make cleanup: arbeitet auf der Datenbank aus .env. Mit --now in der Zukunft löscht es
+# LIVE-Daten. Vorher DRY=1 verwenden.
+.PHONY: backup purge-backups restore cleanup
+
+backup: ## Verschlüsseltes DB-Backup (age) nach BACKUP_DIR, rotiert nach BACKUP_KEEP_DAYS
+	@bash scripts/backup.sh
+
+purge-backups: ## Alle Backups löschen, sobald die Aufbewahrungsfrist abgelaufen ist (stündlich per Cron)
+	@bash scripts/backup.sh --purge-expired
+
+restore: ## Backup einspielen: make restore IDENTITY=key.txt FILE=backups/x.dump.age TARGET_DB=name [RESTORE_ARGS=--replace]
+	@bash scripts/restore.sh --identity "$(IDENTITY)" --file "$(FILE)" --target-db "$(TARGET_DB)" $(RESTORE_ARGS)
+
+cleanup: ## Retention-Cleanup einmal ausführen (DRY=1: nur zählen; CLEANUP_ARGS="--now 2027-02-01T00:00:00Z")
+	$(COMPOSE) run --rm --no-deps --entrypoint python cleanup -m app.cleanup $(if $(DRY),--dry-run,) $(CLEANUP_ARGS)

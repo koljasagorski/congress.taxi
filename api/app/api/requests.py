@@ -12,6 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from app.auth.deps import CurrentUser, SessionDep, SettingsDep
+from app.ratelimit import user_rate_limit
 from app.routing import RoutingClient, get_routing_client
 from app.schemas.common import Page
 from app.schemas.requests import RequestCreate, RequestOut, RequestStatus
@@ -25,7 +26,14 @@ LimitQuery = Annotated[int, Query(ge=1, le=100)]
 OffsetQuery = Annotated[int, Query(ge=0)]
 
 
-@router.post("/rides/{ride_id}/requests", response_model=RequestOut, status_code=201)
+@router.post(
+    "/rides/{ride_id}/requests",
+    response_model=RequestOut,
+    status_code=201,
+    dependencies=[
+        Depends(user_rate_limit("requests_create", "rate_limit_requests_create_per_hour", 3600))
+    ],
+)
 async def create_request(
     ride_id: uuid.UUID,
     body: RequestCreate,

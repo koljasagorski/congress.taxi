@@ -14,8 +14,8 @@ Frontend **parallel** entstehen können. Abweichungen nur über eine dokumentier
 
 `details` nur bei `validation_error` (422). Nie Eingabewerte (E-Mail, Koordinaten) in Fehlern oder Logs
 zurückspiegeln. Codes (HTTP): `bad_request` 400 · `unauthorized` 401 · `forbidden` 403 · `not_found` 404 ·
-`conflict` 409 · `validation_error` 422 · `rate_limited` 429 (mit `Retry-After`) · `routing_unavailable` 503 ·
-`internal_error` 500. Fachliche Codes siehe je Endpunkt.
+`conflict` 409 · `payload_too_large` 413 (Body > 64 KB; Caddy und API) · `validation_error` 422 · `rate_limited` 429
+(mit `Retry-After`) · `routing_unavailable` 503 · `internal_error` 500. Fachliche Codes siehe je Endpunkt.
 
 **Objekt-Autorisierung:** Fremde oder nicht existierende Objekte liefern beide `404 not_found` (kein
 Existenz-Orakel). `401` nur ohne gültige Anmeldung.
@@ -38,7 +38,10 @@ gleich, ungültige Eingaben und NUL-Bytes ergeben dort 401, nie 422/500). Reserv
 außerhalb von `APP_ENV=production` zulässig (Seed-Daten); in Produktion 422. `DELETE /api/me` gibt Plätze angenommener
 Mitfahrten zurück (Sperr-Reihenfolge: Fahrt vor Anfrage, Gutschrift erst nach der Sperre). Passwort-Hash: argon2id (`argon2-cffi`).
 Login/Register sind per `rate_limit(...)` (`app/ratelimit.py`) begrenzt: `rate_limit_login_per_min`,
-`rate_limit_register_per_hour`. Bekannte Grenze: E-Mail-Adressen sind nicht verifiziert.
+`rate_limit_register_per_hour` (je Client-IP). **Zusätzlich** zählt der Login je **normalisierter E-Mail**
+(`rate_limit_login_per_email_per_min`, Standard 5/min, Fenster 60 s): jeder Versuch, auch bei unbekanntem Konto und auch bei
+richtigem Passwort während der Sperre (kein Orakel; die E-Mail steht nur als Salt-Hash im Speicher). Grenze: Wer die
+Adresse kennt, kann das Konto minutenweise für Logins sperren. Bekannte Grenze außerdem: E-Mail-Adressen sind nicht verifiziert.
 
 ## Konfiguration (fertig)
 
@@ -54,7 +57,7 @@ Login/Register sind per `rate_limit(...)` (`app/ratelimit.py`) begrenzt: `rate_l
 
 | Methode & Pfad | Body / Query | Erfolg | Fehler |
 |---|---|---|---|
-| `POST /api/rides` | `{start{lat,lon}, departure_time, seats}` | **201** RideOut | 422 `validation_error` (`departure_time` in der Zukunft, `seats` 1–8) · 422 `outside_coverage` (Start oder Event nicht nahe einer Straße im Extrakt, `snap_or_error`) · 422 `no_route` · 503 `routing_unavailable` |
+| `POST /api/rides` | `{start{lat,lon}, departure_time, seats}` | **201** RideOut | 422 `validation_error` (`departure_time` in der Zukunft, `seats` 1–8) · 422 `outside_coverage` (Start oder Event nicht nahe einer Straße im Extrakt, `snap_or_error`) · 422 `no_route` · 429 (`rate_limit_rides_create_per_hour`, **je Nutzer**) · 503 `routing_unavailable` |
 | `GET /api/rides/mine` | `limit` (1–100, Standard 50), `offset` | 200 `Page[RideOut]` (`{items,total,limit,offset}`), neueste Abfahrt zuerst | 422 |
 | `PATCH /api/rides/{id}` | optional `{departure_time, seats_total}` | 200 RideOut | 404 · 409 `has_accepted_requests` (Abfahrtszeit ändern, solange angenommene Anfragen existieren) · 409 `seats_below_accepted` (`seats_total` < angenommene) · 409 `ride_cancelled` · 422 |
 | `DELETE /api/rides/{id}` | – | **204**; Fahrt → `cancelled`; alle `pending`/`accepted`-Anfragen → `cancelled` (`decided_at` gesetzt) | 404 |
@@ -75,8 +78,8 @@ Umsetzung Phase 3 (Klarstellungen, keine Abweichung von den Pfaden/Formen):
 * `distance_km` auf 0,1 km, `duration_min` auf 0,1 min gerundet. Ist die Linie zu kurz für `ST_Simplify`,
   wird die unvereinfachte Linie geliefert.
 * Sperr-Reihenfolge wie vorgeschrieben: erst Fahrtzeile (`FOR UPDATE`), dann Anfragen.
-* Noch offen (Phase 7): Rate-Limit **pro Nutzer** für `POST /api/rides`; bis dahin schützt nur das globale
-  IP-Limit.
+* Rate-Limit **pro Nutzer** (zusätzlich zum IP-Limit): `rate_limit_rides_create_per_hour` (Standard 20/h) →
+  `429 rate_limited` mit `Retry-After`. Anonyme bekommen zuerst 401, nie 429.
 
 ## Matching (Phase 4) – Anmeldung erforderlich
 
@@ -93,7 +96,8 @@ Ablauf wörtlich nach Auftrag: (1) Pickup per `snap_or_error` prüfen · (2) SQL
 `{ride_id, driver_display_name, departure_time, seats_available, detour_km, detour_minutes, detour_ratio, route:[[lat,lon],…]}`.
 **Keine Kontaktdaten, keine Fahrer-ID, keine E-Mail.** Die Route wird für die Anzeige vereinfacht **und am Anfang um
 `MATCH_ROUTE_TRIM_START_M` Meter gekürzt** (Datenschutz: Wohnadresse des Fahrers). Fehler: 422 `validation_error`,
-422 `outside_coverage`, 503 `routing_unavailable`. Keine Treffer → `{"items": [], "total": 0}`.
+422 `outside_coverage`, 429 `rate_limited` (je Client-IP `RATE_LIMIT_MATCH_PER_MIN` **und** je Nutzer
+`RATE_LIMIT_MATCH_USER_PER_MIN`), 503 `routing_unavailable`. Keine Treffer → `{"items": [], "total": 0}`.
 
 **Gröbere Umweg-Werte (Standort-Orakel, Sicherheitsreview):** Die Antwort gibt den Umweg bewusst ungenau aus:
 `detour_km` in **0,5-km-Schritten** (kaufmännisch gerundet, z. B. `1.5`), `detour_minutes` **ganzzahlig** (JSON-Integer),
@@ -125,7 +129,7 @@ Nie in Match-Antworten, nie bei `pending`/`declined`/`cancelled`.
 
 | Methode & Pfad | Body / Query | Erfolg | Fehler |
 |---|---|---|---|
-| `POST /api/rides/{id}/requests` | `{pickup{lat,lon}}` | **201** RequestOut (`pending`); Umweg wird **serverseitig neu berechnet** (`compute_detour`), Clientwerte gibt es nicht | 404 (Fahrt unbekannt/`cancelled`) · 403 `own_ride` · 409 `ride_full` · 409 `ride_departed` · 409 `already_requested` (aktive Anfrage existiert) · 422 `detour_too_large` · 422 `outside_coverage` · 503 |
+| `POST /api/rides/{id}/requests` | `{pickup{lat,lon}}` | **201** RequestOut (`pending`); Umweg wird **serverseitig neu berechnet** (`compute_detour`), Clientwerte gibt es nicht | 404 (Fahrt unbekannt/`cancelled`) · 403 `own_ride` · 409 `ride_full` · 409 `ride_departed` · 409 `already_requested` (aktive Anfrage existiert) · 422 `detour_too_large` · 422 `outside_coverage` · 429 (`rate_limit_requests_create_per_hour`, Standard 30/h **je Nutzer**) · 503 |
 | `GET /api/requests/incoming` | `status`, `limit`, `offset` | 200 `Page[RequestOut]` – Anfragen an meine Fahrten | 422 |
 | `GET /api/requests/outgoing` | `status`, `limit`, `offset` | 200 `Page[RequestOut]` – meine Anfragen | 422 |
 | `POST /api/requests/{id}/accept` | – | 200 RequestOut (`accepted`); **atomar**: Zeile der Fahrt `SELECT … FOR UPDATE`, dann Anfrage; `seats_available − 1`; bei 0 → Fahrt `full` | 404 (nicht meine Fahrt) · 409 `invalid_state` · 409 `ride_full` · 409 `ride_cancelled` |
@@ -143,7 +147,9 @@ gegen parallele accept/cancel; das anschließende CASCADE-Löschen entfernt alle
 
 ## Gesundheit (fertig)
 
-`GET /api/health` (Liveness), `GET /api/health/ready` (DB + OSRM).
+`GET /api/health` (Liveness; vom Rate-Limit ausgenommen, Docker-Healthcheck), `GET /api/health/ready` (DB + OSRM;
+**10 Anfragen/min je Client**, `429` darüber). `/api/health/ready` ist **nur intern** gedacht: Caddy antwortet von außen
+mit `404` (der Pfad belegt eine DB-Verbindung, ruft OSRM auf und nennt die PostGIS-Version).
 
 ## Sicherheit und Betrieb (Phase 7)
 
@@ -153,8 +159,19 @@ gegen parallele accept/cancel; das anschließende CASCADE-Löschen entfernt alle
 * Origin-Prüfung für `POST/PUT/PATCH/DELETE`: trägt die Anfrage einen `Origin`-Header, muss er in `ALLOWED_ORIGINS`
   (bzw. aus `DOMAIN` abgeleitet, `Settings.allowed_origin_list`) liegen, sonst 403 `forbidden`. Ohne `Origin` kein Fehler
   (Skripte, Tests) – die Cookies sind SameSite=Strict.
-* Globales Rate-Limit je Client-IP (`RATE_LIMIT_API_PER_MIN`), strenger für `/api/match` (`RATE_LIMIT_MATCH_PER_MIN`);
-  Login/Register wie oben. Zähler in-memory, ein Worker (bekannte Grenze).
+* Rate-Limits (alle `429 rate_limited` mit `Retry-After`; Zähler in-memory, ein Worker – bekannte Grenze). **Je Client-IP**
+  (IPv6 nach /64): alles unter `/api` außer der Liveness `RATE_LIMIT_API_PER_MIN` (120/min), `/api/match`
+  `RATE_LIMIT_MATCH_PER_MIN` (20/min), `/api/health/ready` fest 10/min, Login `RATE_LIMIT_LOGIN_PER_MIN` (10/min),
+  Registrierung `RATE_LIMIT_REGISTER_PER_HOUR` (10/h). **Zusätzlich je Nutzer bzw. E-Mail** (Wechsel der Adresse umgeht
+  sie nicht): Login je normalisierter E-Mail `RATE_LIMIT_LOGIN_PER_EMAIL_PER_MIN` (5/min), `GET /api/match`
+  `RATE_LIMIT_MATCH_USER_PER_MIN` (20/min), `POST /api/rides` `RATE_LIMIT_RIDES_CREATE_PER_HOUR` (20/h),
+  `POST /api/rides/{id}/requests` `RATE_LIMIT_REQUESTS_CREATE_PER_HOUR` (30/h). Je Limit eine eigene Tabelle (50 000
+  Schlüssel); ist sie voll, werden aktive Zähler **nie** verdrängt: abgelaufene Einträge werden entfernt, neue Schlüssel
+  teilen sich sonst einen gemeinsamen Eimer (fail-closed). `X-Forwarded-For` zählt nur von Peers in `TRUSTED_PROXIES`
+  (genau die feste Adresse des Proxys, nie ein ganzes Netz).
+* Body-Obergrenze 64 KB: `413 payload_too_large` (Caddy `request_body` und die API selbst, auch ohne `Content-Length`).
+* `/api/docs`, `/api/openapi.json` und ReDoc gibt es nur außerhalb von `APP_ENV=production` (die Swagger-UI lädt Skripte
+  von `cdn.jsdelivr.net`, das widerspricht „keine externen CDNs“); in Produktion `404 not_found`.
 * Retention-Cleanup: `python -m app.cleanup [--dry-run] [--now ISO]`; löscht **alles** (Anfragen, Fahrten, Konten), sobald
   `jetzt > EVENT_END_DATE + RETENTION_DAYS_AFTER_EVENT` (Tagesende UTC); idempotent; Ausgabe nur Zählwerte.
 * Backups: `pg_dump` → `age -r $BACKUP_AGE_RECIPIENT`; Aufbewahrung `BACKUP_KEEP_DAYS` **kleiner** als die Retention.
@@ -182,7 +199,7 @@ Jede Phase bearbeitet **nur** ihre Dateien. **Eingefroren** (nur durch Änderung
 | 4 | `app/api/match.py`, `app/schemas/match.py`, `app/services/matching.py`, `app/services/detour.py` (Interna/Härtung, **Signatur bleibt**), `scripts/seed_demo.py` + Make-Target `seed-demo`, `tests/test_match_*.py`, `tests/test_detour*.py` |
 | 5 | `app/api/requests.py`, `app/schemas/requests.py`, `app/services/requests.py`, `tests/test_requests_*.py` |
 | 6 | `web/**`; `.github/workflows/ci.yml` (nur den eigenen Job `web` anhängen); `docker-compose.yml` (nur Service `web` anhängen) |
-| 7 | `app/cleanup.py`, `app/middleware/security.py`, `app/ratelimit.py`, `scripts/backup.sh`, `scripts/restore.sh`, `caddy/**`, `tests/test_cleanup*.py`, `tests/test_security_*.py`, `tests/test_ratelimit*.py`; `docker-compose.yml` (nur Services `caddy`, `cleanup`, ggf. `backup` anhängen); `Makefile` (nur neue Targets anhängen) |
+| 7 | `docker-compose.proxy.yml`, `Dockerfile`-CMD (`--no-proxy-headers`), `app/cleanup.py`, `app/middleware/security.py`, `app/ratelimit.py`, `scripts/backup.sh`, `scripts/restore.sh`, `caddy/**`, `tests/test_cleanup*.py`, `tests/test_security_*.py`, `tests/test_ratelimit*.py`; `docker-compose.yml` (nur Services `caddy`, `cleanup`, ggf. `backup` anhängen); `Makefile` (nur neue Targets anhängen) |
 | 8 (später) | `e2e/**`, `README.md`, `docs/DATENSCHUTZ.md`, `PLAN.md`, CI-Job `e2e` |
 
 Das Schema ist vollständig – **keine** neuen Migrationen. Falls zwingend nötig: Änderungsanfrage.

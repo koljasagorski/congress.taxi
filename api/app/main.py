@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request, Response
 
 from app.api import auth, health, match, me, requests, rides
 from app.api import config as config_api
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.db import dispose_engine
 from app.errors import install_error_handlers
 from app.middleware.security import install_security
@@ -26,13 +26,31 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await dispose_engine()
 
 
-def create_app() -> FastAPI:
+def _docs_enabled(settings: Settings | None) -> bool:
+    """Swagger UI/OpenAPI nur außerhalb von production.
+
+    Die Swagger-UI lädt ihr JavaScript von cdn.jsdelivr.net – das verletzt „keine externen CDNs“ und
+    die CSP von Caddy. In Produktion gibt es deshalb weder ``/api/docs`` noch ``/api/openapi.json``
+    noch ReDoc (404 im Standard-Fehlerformat). Ist die Konfiguration ungültig (z. B. Platzhalter-
+    Secrets in production), bleiben sie ebenfalls aus; ``lifespan`` meldet den Fehler beim Start.
+    """
+    if settings is None:
+        try:
+            settings = get_settings()
+        except ValueError:
+            return False
+    return settings.app_env != "production"
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    """Baut die App. ``settings`` nur für Tests (Standard: ``get_settings()``)."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    docs = _docs_enabled(settings)
     app = FastAPI(
         title="Mitfahrer-Matching 40C3",
         version="0.1.0",
-        docs_url="/api/docs",
-        openapi_url="/api/openapi.json",
+        docs_url="/api/docs" if docs else None,
+        openapi_url="/api/openapi.json" if docs else None,
         redoc_url=None,
         lifespan=lifespan,
     )

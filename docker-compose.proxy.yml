@@ -1,0 +1,27 @@
+# Ergänzung zu docker-compose.yml für den Betrieb MIT dem mitgelieferten Caddy (Profil "proxy").
+#
+# Aktivieren (einmalig in .env, beide Zeilen gehören zusammen):
+#   COMPOSE_PROFILES=proxy
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml
+# Danach wie gewohnt:  make up
+#
+# Was diese Datei ändert (Compose-Profile können keine Ports entfernen, deshalb eine eigene Datei):
+#   * Die API veröffentlicht KEINEN Port mehr auf dem Host; erreichbar ist sie nur über Caddy.
+#   * Die API hängt zusätzlich im Netz "proxy" (siehe docker-compose.yml, dort hat Caddy eine feste
+#     Adresse) und vertraut X-Forwarded-For genau von dieser einen Adresse: TRUSTED_PROXIES wird auf
+#     die /32 von Caddy gesetzt und überschreibt einen Wert aus .env. Ein ganzes Docker-Netz zu
+#     vertrauen wäre zu weit: jeder Container darin könnte seine Client-Adresse beliebig vorgeben
+#     und so das Rate-Limit umgehen.
+#
+# Nicht verwenden, wenn davor ein Rand-Proxy auf einem anderen Gast steht (deploy/hel/): dort läuft
+# kein eigener Caddy, die API-Bindung kommt aus API_BIND und TRUSTED_PROXIES aus .env (=Adresse des
+# Rand-Proxys).
+
+services:
+  api:
+    ports: !reset []
+    networks:
+      - default
+      - proxy
+    environment:
+      TRUSTED_PROXIES: ${CADDY_IPV4:-172.29.71.2}

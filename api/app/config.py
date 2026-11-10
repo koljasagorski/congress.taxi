@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     rate_limit_register_per_hour: int = Field(default=10, gt=0)
     rate_limit_api_per_min: int = Field(default=120, gt=0)
     rate_limit_match_per_min: int = Field(default=20, gt=0)
+    #: zusätzlich zum IP-Limit (Phase 7): je normalisierter E-Mail beim Login, je Nutzer sonst
+    rate_limit_login_per_email_per_min: int = Field(default=5, gt=0)
+    rate_limit_match_user_per_min: int = Field(default=20, gt=0)
+    rate_limit_rides_create_per_hour: int = Field(default=20, gt=0)
+    rate_limit_requests_create_per_hour: int = Field(default=30, gt=0)
 
     # Backup (Phase 7)
     backup_age_recipient: str = ""

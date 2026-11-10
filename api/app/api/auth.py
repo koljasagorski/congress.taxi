@@ -19,7 +19,7 @@ from app.auth.passwords import Argon2PasswordHasher, PasswordHasher, dummy_hash
 from app.auth.tokens import clear_auth_cookie, create_access_token, set_auth_cookie
 from app.errors import ApiError
 from app.models import User
-from app.ratelimit import rate_limit
+from app.ratelimit import check_limit, rate_limit
 from app.schemas.auth import LoginIn, LoginOut, RegisterIn, UserBrief, canonical_email
 from app.schemas.common import Message
 
@@ -82,6 +82,10 @@ async def login(
     hasher: HasherDep,
 ) -> LoginOut:
     email = canonical_email(body.email)
+    # Zusätzlich zum IP-Limit: je normalisierter E-Mail (verteiltes Raten auf ein Konto). Gezählt
+    # wird jeder Versuch, egal ob das Konto existiert (kein Orakel); gespeichert nur als Salt-Hash.
+    if settings.rate_limit_enabled:
+        check_limit("login_email", email, settings.rate_limit_login_per_email_per_min, 60)
     # NUL-Bytes lehnt PostgreSQL ab (sonst 500): wie eine unbekannte E-Mail behandeln.
     user = (
         None if "\x00" in email else await session.scalar(select(User).where(User.email == email))

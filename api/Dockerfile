@@ -28,4 +28,7 @@ EXPOSE 8000
 
 # Migrationen beim Start (Einzelinstanz-Betrieb). Ein Worker: der Rate-Limiter (Phase 7)
 # hält seinen Zustand im Speicher. Access-Log aus: Query-Strings enthalten Koordinaten.
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --no-access-log"]
+# --no-proxy-headers: Uvicorns eigene X-Forwarded-For-Auswertung (vertraut standardmäßig 127.0.0.1
+# und überschreibt die Client-Adresse) ist aus; allein app/ratelimit.py entscheidet anhand von
+# TRUSTED_PROXIES, wessen X-Forwarded-For geglaubt wird.
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --no-access-log --no-proxy-headers"]

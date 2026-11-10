@@ -88,3 +88,33 @@ jobs:
       - name: Logs bei Fehler
         if: failure()
         run: docker compose logs --no-color --tail=200
+
+  # Betrieb (Phase 7): Shell-Skripte, Caddyfile, Backup-Roundtrip (Wegwerf-PostGIS) und
+  # Caddy-Wegwerfaufbau. Voraussetzungen fehlen -> Fehler statt Überspringen (REQUIRE_OPS_TESTS).
+  ops:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      REQUIRE_OPS_TESTS: "1"
+      POSTGIS_IMAGE: postgis/postgis:16-3.5
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: api/uv.lock
+      - name: age installieren (Backup-Verschlüsselung)
+        run: sudo apt-get update && sudo apt-get install -y age
+      - name: shellcheck
+        run: shellcheck -x scripts/backup.sh scripts/restore.sh caddy/entrypoint.sh caddy/tile-origin.sh
+      - run: cd api && uv sync --frozen
+      - name: Compose-Datei validieren (ohne Ausgabe der Werte)
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+          docker compose --profile proxy config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.proxy.yml --profile proxy config --quiet
+      - name: Backup-Roundtrip, Compose-Konfiguration, Caddy-Aufbau (nginx-Platzhalter und echte API)
+        run: |
+          cd api
+          uv run pytest -q tests/test_security_backup.py tests/test_security_backup_purge.py tests/test_compose_config.py tests/test_security_caddy.py tests/test_security_caddy_api.py

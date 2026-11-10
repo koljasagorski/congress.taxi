@@ -10,7 +10,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -19,7 +19,7 @@ from app.auth.passwords import Argon2PasswordHasher, PasswordHasher, dummy_hash
 from app.auth.tokens import clear_auth_cookie, create_access_token, set_auth_cookie
 from app.errors import ApiError
 from app.models import User
-from app.ratelimit import check_limit, rate_limit
+from app.ratelimit import Slot, client_ip, rate_limit, reserve_slots
 from app.schemas.auth import LoginIn, LoginOut, RegisterIn, UserBrief, canonical_email
 from app.schemas.common import Message
 
@@ -76,16 +76,35 @@ def _invalid_credentials() -> ApiError:
 )
 async def login(
     body: LoginIn,
+    request: Request,
     response: Response,
     session: SessionDep,
     settings: SettingsDep,
     hasher: HasherDep,
 ) -> LoginOut:
     email = canonical_email(body.email)
-    # Zusätzlich zum IP-Limit: je normalisierter E-Mail (verteiltes Raten auf ein Konto). Gezählt
-    # wird jeder Versuch, egal ob das Konto existiert (kein Orakel); gespeichert nur als Salt-Hash.
+    # Zusätzlich zum IP-Limit (zählt jeden Versuch): Fehlversuche je E-Mail+IP und je E-Mail. Nur
+    # Fehlversuche zählen – wer die Adresse des Opfers kennt, sperrt dessen Login so nicht aus.
+    # Die Plätze werden VOR der (awaiteten) Prüfung belegt, damit parallele Versuche das Limit
+    # nicht unterlaufen, und bei richtigem Passwort zurückgegeben. Ist ein Limit erreicht, gibt es
+    # 429 – auch bei richtigem Passwort (sonst wäre 200/429 ein Orakel und Raten unbegrenzt) und
+    # identisch für bekannte und unbekannte E-Mails (die Zähler kennen kein Konto; nur Salt-Hash).
+    reservation = None
     if settings.rate_limit_enabled:
-        check_limit("login_email", email, settings.rate_limit_login_per_email_per_min, 60)
+        reservation = reserve_slots(
+            [
+                Slot(
+                    "login_fail_email_ip",
+                    email,
+                    settings.rate_limit_login_fail_per_email_ip_per_min,
+                    60,
+                    ip=client_ip(request, settings),
+                ),
+                Slot(
+                    "login_fail_email", email, settings.rate_limit_login_fail_per_email_per_min, 60
+                ),
+            ]
+        )
     # NUL-Bytes lehnt PostgreSQL ab (sonst 500): wie eine unbekannte E-Mail behandeln.
     user = (
         None if "\x00" in email else await session.scalar(select(User).where(User.email == email))
@@ -94,7 +113,9 @@ async def login(
     stored_hash = user.password_hash if user is not None else dummy_hash(hasher)
     verified = await asyncio.to_thread(hasher.verify, stored_hash, body.password)
     if user is None or not verified:
-        raise _invalid_credentials()
+        raise _invalid_credentials()  # Fehlversuch: die belegten Plätze bleiben gezählt
+    if reservation is not None:
+        reservation.release()
 
     if await asyncio.to_thread(hasher.needs_rehash, user.password_hash):
         new_hash = await asyncio.to_thread(hasher.hash, body.password)

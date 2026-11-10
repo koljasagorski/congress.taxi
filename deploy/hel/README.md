@@ -81,6 +81,11 @@ Im **Teilstand** reicht der Rand nur `/api/health` durch; `/`, `/api/docs`, `/ap
 mit 404; `/api/health/ready` bleibt auch beim Öffnen des Rands von außen zu). Das wird mit Phase 6/7 geöffnet (Frontend, Security-Header,
 Rate-Limits).
 
+**Beim nächsten Ausrollen (Sicherheitsfix Login-Limits, auf `hel` noch nichts verändert):** Der Schlüssel
+`RATE_LIMIT_LOGIN_PER_EMAIL_PER_MIN` heißt jetzt `RATE_LIMIT_LOGIN_FAIL_PER_EMAIL_IP_PER_MIN` (5) und
+`RATE_LIMIT_LOGIN_FAIL_PER_EMAIL_PER_MIN` (30); ein alter Eintrag in der `.env` auf CT 220 wird still ignoriert
+(Standardwerte gelten) und kann entfernt werden. Details: `PLAN.md` Annahme 9.
+
 **Frontend freischalten (Phase 6, noch nicht ausgeführt):** (1) `make up` baut seit Phase 6 auch den Container `web` (Node-Build, nginx, Port 8080,
 standardmäßig nur `127.0.0.1`); für den Rand `WEB_BIND=10.10.10.80` in `.env` setzen. (2) In `nftables.conf` Port 8080 wie 8000 nur für
 `10.10.10.70` öffnen (Eingabekette und `forward`-Regel, sonst umgehen veröffentlichte Docker-Ports die Kette). (3) Im Rand-Block

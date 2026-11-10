@@ -16,7 +16,6 @@ from typing import Any
 import httpx
 import pytest
 
-from app.auth.passwords import Argon2PasswordHasher
 from app.config import Settings
 from app.ratelimit import limiter
 from tests.helpers import create_user, future, insert_ride
@@ -38,7 +37,8 @@ def limits(**small: int) -> Any:
         "trusted_proxies": "127.0.0.1",
         "rate_limit_api_per_min": HIGH,
         "rate_limit_login_per_min": HIGH,
-        "rate_limit_login_per_email_per_min": HIGH,
+        "rate_limit_login_fail_per_email_ip_per_min": HIGH,
+        "rate_limit_login_fail_per_email_per_min": HIGH,
         "rate_limit_register_per_hour": HIGH,
         "rate_limit_match_per_min": HIGH,
         "rate_limit_match_user_per_min": HIGH,
@@ -87,62 +87,7 @@ async def test_login_is_limited_per_ip(client: httpx.AsyncClient) -> None:
         assert other.status_code == 401
 
 
-async def test_login_is_limited_per_normalized_email_across_ips(
-    client: httpx.AsyncClient, db: Any
-) -> None:
-    await create_user(
-        db, email="opfer@example.org", password_hash=Argon2PasswordHasher().hash(PASSWORD)
-    )
-    with limits(rate_limit_login_per_email_per_min=3):
-        codes = []
-        # jeder Versuch kommt von einer anderen Adresse und schreibt die E-Mail anders
-        for i, spelled in enumerate(
-            ["opfer@example.org", " OPFER@example.org", "Opfer@Example.ORG ", "opfer@example.org"]
-        ):
-            r = await client.post(
-                "/api/auth/login",
-                json={"email": spelled, "password": "falsch-falsch-falsch"},
-                headers=xff(f"198.51.100.{10 + i}"),
-            )
-            codes.append(r.status_code)
-        assert codes == [401, 401, 401, 429]
-        assert_limited(r)
-        # auch das richtige Passwort kommt in der Sperrzeit nicht durch
-        ok = await client.post(
-            "/api/auth/login",
-            json={"email": "opfer@example.org", "password": PASSWORD},
-            headers=xff("198.51.100.99"),
-        )
-        assert ok.status_code == 429
-        # andere Konten bleiben nutzbar
-        other = await client.post(
-            "/api/auth/login",
-            json={"email": "anderer@example.org", "password": PASSWORD},
-            headers=xff("198.51.100.99"),
-        )
-        assert other.status_code == 401
-
-
-async def test_login_email_limit_gives_no_account_oracle(
-    client: httpx.AsyncClient, db: Any
-) -> None:
-    await create_user(
-        db, email="bekannt@example.org", password_hash=Argon2PasswordHasher().hash(PASSWORD)
-    )
-    with limits(rate_limit_login_per_email_per_min=2):
-        seen = {}
-        for email in ("bekannt@example.org", "unbekannt@example.org"):
-            seen[email] = [
-                (
-                    await client.post(
-                        "/api/auth/login",
-                        json={"email": email, "password": "falsch-falsch-falsch"},
-                        headers=xff(f"198.51.100.{20 + i}"),
-                    )
-                ).status_code
-                for i in range(3)
-            ]
-        assert seen["bekannt@example.org"] == seen["unbekannt@example.org"] == [401, 401, 429]
+# Login je E-Mail: Tests in test_ratelimit_login_lockout.py
 
 
 async def test_register_is_limited_per_ip(client: httpx.AsyncClient) -> None:
@@ -343,13 +288,20 @@ async def test_disabled_rate_limit_never_blocks_user_routes(
 
 async def test_settings_defaults_and_env_example_list_the_new_limits() -> None:
     fields = Settings.model_fields
-    assert fields["rate_limit_login_per_email_per_min"].default == 5
+    assert fields["rate_limit_login_fail_per_email_ip_per_min"].default == 5
+    assert fields["rate_limit_login_fail_per_email_per_min"].default == 30
+    # global deutlich höher als je E-Mail+IP (sonst sperrt ein Angreifer das Opfer wieder aus)
+    assert (
+        fields["rate_limit_login_fail_per_email_per_min"].default
+        >= 5 * fields["rate_limit_login_fail_per_email_ip_per_min"].default
+    )
     assert fields["rate_limit_match_user_per_min"].default == 20
     assert fields["rate_limit_rides_create_per_hour"].default == 20
     assert fields["rate_limit_requests_create_per_hour"].default == 30
     example = await asyncio.to_thread(ENV_EXAMPLE.read_text)
     for name in (
-        "RATE_LIMIT_LOGIN_PER_EMAIL_PER_MIN",
+        "RATE_LIMIT_LOGIN_FAIL_PER_EMAIL_IP_PER_MIN",
+        "RATE_LIMIT_LOGIN_FAIL_PER_EMAIL_PER_MIN",
         "RATE_LIMIT_MATCH_USER_PER_MIN",
         "RATE_LIMIT_RIDES_CREATE_PER_HOUR",
         "RATE_LIMIT_REQUESTS_CREATE_PER_HOUR",

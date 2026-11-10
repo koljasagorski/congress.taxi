@@ -38,10 +38,17 @@ gleich, ungültige Eingaben und NUL-Bytes ergeben dort 401, nie 422/500). Reserv
 außerhalb von `APP_ENV=production` zulässig (Seed-Daten); in Produktion 422. `DELETE /api/me` gibt Plätze angenommener
 Mitfahrten zurück (Sperr-Reihenfolge: Fahrt vor Anfrage, Gutschrift erst nach der Sperre). Passwort-Hash: argon2id (`argon2-cffi`).
 Login/Register sind per `rate_limit(...)` (`app/ratelimit.py`) begrenzt: `rate_limit_login_per_min`,
-`rate_limit_register_per_hour` (je Client-IP). **Zusätzlich** zählt der Login je **normalisierter E-Mail**
-(`rate_limit_login_per_email_per_min`, Standard 5/min, Fenster 60 s): jeder Versuch, auch bei unbekanntem Konto und auch bei
-richtigem Passwort während der Sperre (kein Orakel; die E-Mail steht nur als Salt-Hash im Speicher). Grenze: Wer die
-Adresse kennt, kann das Konto minutenweise für Logins sperren. Bekannte Grenze außerdem: E-Mail-Adressen sind nicht verifiziert.
+`rate_limit_register_per_hour` (je Client-IP, zählen **jeden** Versuch). **Zusätzlich** zählen beim Login je **normalisierter
+E-Mail** nur **Fehlversuche** (Fenster 60 s, Salt-Hash im Speicher, auch für unbekannte Konten – kein Orakel):
+`rate_limit_login_fail_per_email_ip_per_min` (je E-Mail+IP, Standard 5) und `rate_limit_login_fail_per_email_per_min` (je E-Mail
+über alle Adressen, Standard 30, deutlich höher). Ein Login mit **richtigem** Passwort geht durch, solange keines der beiden
+Limits erreicht ist; wer die Adresse des Opfers kennt, sperrt dessen Login von einer anderen IP aus daher nicht aus. Ist ein
+Limit erreicht, antwortet der Login **vor** der Passwortprüfung mit `429 rate_limited` + `Retry-After` – **auch bei richtigem
+Passwort** und identisch für bekannte wie unbekannte E-Mails (sonst wäre 200/429 ein Passwort-Orakel und Raten unbegrenzt).
+Die Plätze werden vor der Prüfung belegt und bei Erfolg zurückgegeben (parallele Versuche unterlaufen das Limit nicht).
+Grenzen: ein Botnetz mit vielen Adressen kann das globale Limit füllen und das Konto minutenweise sperren; Nutzer hinter
+derselben NAT (Kongress-WLAN) teilen sich die E-Mail+IP-Grenze. Bekannte Grenze außerdem: E-Mail-Adressen sind nicht verifiziert.
+(Der frühere Schlüssel `rate_limit_login_per_email_per_min` entfällt; ein alter Wert in einer `.env` wird ignoriert.)
 
 ## Konfiguration (fertig)
 
@@ -172,11 +179,15 @@ mit `404` (der Pfad belegt eine DB-Verbindung, ruft OSRM auf und nennt die PostG
   (IPv6 nach /64): alles unter `/api` außer der Liveness `RATE_LIMIT_API_PER_MIN` (120/min), `/api/match`
   `RATE_LIMIT_MATCH_PER_MIN` (20/min), `/api/health/ready` fest 10/min, Login `RATE_LIMIT_LOGIN_PER_MIN` (10/min),
   Registrierung `RATE_LIMIT_REGISTER_PER_HOUR` (10/h). **Zusätzlich je Nutzer bzw. E-Mail** (Wechsel der Adresse umgeht
-  sie nicht): Login je normalisierter E-Mail `RATE_LIMIT_LOGIN_PER_EMAIL_PER_MIN` (5/min), `GET /api/match`
+  sie nicht): Login-**Fehlversuche** je E-Mail+IP `RATE_LIMIT_LOGIN_FAIL_PER_EMAIL_IP_PER_MIN` (5/min) und je E-Mail
+  `RATE_LIMIT_LOGIN_FAIL_PER_EMAIL_PER_MIN` (30/min; Details unter „Authentifizierung“), `GET /api/match`
   `RATE_LIMIT_MATCH_USER_PER_MIN` (20/min), `POST /api/rides` `RATE_LIMIT_RIDES_CREATE_PER_HOUR` (20/h),
   `POST /api/rides/{id}/requests` `RATE_LIMIT_REQUESTS_CREATE_PER_HOUR` (30/h). Je Limit eine eigene Tabelle (50 000
   Schlüssel); ist sie voll, werden aktive Zähler **nie** verdrängt: abgelaufene Einträge werden entfernt, neue Schlüssel
-  teilen sich sonst einen gemeinsamen Eimer (fail-closed). `X-Forwarded-For` zählt nur von Peers in `TRUSTED_PROXIES`
+  zählen sonst im **Überlauf** (fail-closed, aber großzügig): gemeinsamer Eimer mit dem **50-fachen** Einzel-Limit
+  (`OVERFLOW_FACTOR`; ein normaler neuer Client bleibt bedienbar) und je Gruppe (IPv6 `/48`, IPv4-Adresse; höchstens 256)
+  ein Teil-Eimer mit dem **5-fachen** Limit, sodass ein einzelner Angreifer den gemeinsamen Eimer nicht allein leert.
+  Der Speicher bleibt begrenzt; die Log-Warnung nennt nur den Namen der Tabelle, nie eine Adresse. `X-Forwarded-For` zählt nur von Peers in `TRUSTED_PROXIES`
   (genau die feste Adresse des Proxys, nie ein ganzes Netz).
 * Body-Obergrenze 64 KB: `413 payload_too_large` (Caddy `request_body` und die API selbst, auch ohne `Content-Length`).
 * `/api/docs`, `/api/openapi.json` und ReDoc gibt es nur außerhalb von `APP_ENV=production` (die Swagger-UI lädt Skripte

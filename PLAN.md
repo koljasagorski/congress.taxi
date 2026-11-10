@@ -95,13 +95,31 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
    diese Adresse; auf `hel` (Rand-Caddy, kein eigener Caddy) ist es `10.10.10.70` (`deploy/hel/README.md`).
    Uvicorn läuft mit `--no-proxy-headers` (sonst würde es `X-Forwarded-For` von 127.0.0.1 glauben).
    Eine Limiter-Tabelle je Name (50 000 Schlüssel); IPv6 nach /64; bei voller Tabelle werden aktive Zähler nie
-   verdrängt (abgelaufene fliegen raus, neue Schlüssel teilen sich sonst einen Eimer, fail-closed). Zusätzlich
-   Limits je normalisierter E-Mail (Login) und je Nutzer (`/api/match`, Fahrt anlegen, Anfrage senden).
-   **Bekannte Grenzen:** (a) Das E-Mail-Limit erlaubt, ein Konto minutenweise für Logins zu sperren, wenn man
-   die Adresse kennt. (b) Ein Angreifer mit sehr vielen Adressen kann eine Tabelle füllen; neue Clients werden
-   dann bis zum Ablauf der Fenster (Registrierung: bis zu 1 h) gemeinsam gedrosselt, bestehende Zähler bleiben.
-   (c) Caddys automatische HTTP→HTTPS-Weiterleitung entsteht außerhalb der Site-Handler und trägt `Server: Caddy`
-   sowie keine Sicherheits-Header (leerer Body, keine Daten).
+   verdrängt (abgelaufene fliegen raus). Neue Schlüssel zählen bei voller Tabelle im **Überlauf** (fail-closed, aber
+   großzügig): gemeinsamer Eimer mit dem **50-fachen** Einzel-Limit (`OVERFLOW_FACTOR`: Login 10/min → 500/min,
+   Registrierung 10/h → 500/h – ein Vielfaches des Andrangs auf dem Kongress, aber endlich) und je Gruppe (IPv6 gröber
+   als /48, IPv4 die Adresse; höchstens 256 Gruppen) ein Teil-Eimer mit dem **5-fachen** Limit: Ein Angreifer mit
+   einer IPv6-Zuweisung erschöpft nur seinen Teil-Eimer, erst zehn Gruppen leeren den gemeinsamen. Speicher strikt
+   begrenzt (`max_keys × Limit + 50 × Limit + 256 × 5 × Limit` Zeitstempel je Tabelle); die Log-Warnung nennt nur den
+   Tabellennamen, nie eine Adresse. Zusätzlich Limits je Nutzer (`/api/match`, Fahrt anlegen, Anfrage senden).
+   **Login-Limits (Entscheidung):** Das IP-Limit zählt jeden Versuch; je normalisierter E-Mail zählen nur
+   **Fehlversuche** – eng je E-Mail+IP (5/min), global je E-Mail deutlich höher (30/min). Wer die Adresse des Opfers
+   kennt, kann dessen Login so von einer anderen Adresse aus nicht mehr aussperren (früher: 5 beliebige Anfragen/min
+   genügten). Die Plätze werden *vor* der awaiteten Passwortprüfung belegt und bei richtigem Passwort zurückgegeben
+   (atomar: parallele Versuche überschießen das Limit nicht). Ist ein Limit erreicht, kommt vor der Prüfung 429 – auch
+   bei richtigem Passwort (sonst Passwort-Orakel, Raten unbegrenzt) und gleich für unbekannte E-Mails (kein
+   Konto-Orakel); die 429-Antwort rechnet keinen Hash (gleich für bekannte/unbekannte E-Mails, die 401-Zeit ist wie
+   bisher durch den Dummy-Hash angeglichen). Konfig-Schlüssel umbenannt: `RATE_LIMIT_LOGIN_PER_EMAIL_PER_MIN` →
+   `RATE_LIMIT_LOGIN_FAIL_PER_EMAIL_IP_PER_MIN` / `RATE_LIMIT_LOGIN_FAIL_PER_EMAIL_PER_MIN` (ein alter Wert in einer
+   vorhandenen `.env` wird still ignoriert – bei Ausrollen umbenennen).
+   **Bekannte Grenzen:** (a) Ein Botnetz mit vielen Adressen kann das globale Fehlversuchs-Limit je E-Mail füllen und
+   das Konto dann minutenweise (bis das älteste Fenster abläuft) für Logins sperren – das ist der Preis des Schutzes
+   vor verteiltem Raten; hinter gemeinsamer NAT (Kongress-WLAN) teilen sich Nutzer außerdem die E-Mail+IP-Grenze.
+   (b) Sehr viele *verschiedene* IPv6-/48- bzw. IPv4-Adressen können den gemeinsamen Überlauf-Eimer weiterhin ausschöpfen
+   (Registrierung dann bis zu 1 h für neue Clients ohne Zähler); bestehende Zähler bleiben immer unberührt.
+   (c) Alle Zähler liegen im Prozessspeicher (ein Worker, Neustart leert sie); mehrere Worker bräuchten einen
+   gemeinsamen Speicher. (d) Caddys automatische HTTP→HTTPS-Weiterleitung entsteht außerhalb der Site-Handler und trägt
+   `Server: Caddy` sowie keine Sicherheits-Header (leerer Body, keine Daten).
    **Swagger/OpenAPI** (`/api/docs`, `/api/openapi.json`) nur außerhalb von `production`: die UI lädt Skripte vom
    CDN `cdn.jsdelivr.net`.
 10. **Cookie/CSRF.** JWT in HttpOnly-Cookie, `SameSite=Strict`, `Secure` per Env

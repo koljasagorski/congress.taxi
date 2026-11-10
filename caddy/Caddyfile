@@ -6,7 +6,8 @@
 # Was Caddy hier tut
 #   /api/*      -> api:8000   (FastAPI; Request-Body auf 64 KB begrenzt, zusätzlich in der API selbst;
 #                              /api/health/ready ist von außen gesperrt)
-#   alles andere -> web:8080  (Frontend, nginx)
+#   alles andere -> web:8080  (Frontend: gebaute SPA in nginx; SPA-Fallback auf index.html, gehashte Assets
+#                              /assets/* unveränderlich gecacht, index.html nie – Header setzt web/nginx.conf)
 #   * automatisches TLS (Let's Encrypt; bei DOMAIN=localhost interne CA, Browser-Warnung normal)
 #   * Security-Header an JEDER Antwort, auch an Fehlerseiten (502 ...): CSP, HSTS,
 #     X-Content-Type-Options, Referrer-Policy, Permissions-Policy, frame-ancestors 'none'
@@ -59,6 +60,9 @@
 }
 
 # Sicherheits-Header: für normale Antworten UND für Fehlerseiten (handle_errors) importiert.
+# Argument 1 = Referrer-Policy: Die SPA braucht "strict-origin-when-cross-origin" (die OSM-Tile-Usage-Policy
+# verlangt für Kartenkacheln einen Referer; mehr als die Origin verlässt die Seite nie, nur über HTTPS),
+# /api und Fehlerseiten bleiben bei "no-referrer".
 (security_headers) {
 	header {
 		# Content-Security-Policy: nur eigene Quellen; Kacheln vom Tile-Server aus TILE_URL;
@@ -67,7 +71,7 @@
 		Strict-Transport-Security "{$CADDY_HSTS:max-age=31536000}"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
-		Referrer-Policy "no-referrer"
+		Referrer-Policy "{args[0]}"
 		# Standortfreigabe bleibt für die eigene Seite möglich ("Mein Standort"), alles andere aus
 		Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=()"
 		-Server
@@ -76,33 +80,40 @@
 }
 
 {$CADDY_SITE_ADDRESS:localhost} {
-	import security_headers
 	encode zstd gzip
+
+	# Die Header kommen in JEDEM Zweig (nicht einmal oben): Der Block des Snippets läuft wegen
+	# "-Server"/"-Via" zurückgestellt (nach dem Reverse Proxy) und würde eine spätere Regel für
+	# /api sonst überstimmen. So hat jede Antwort genau eine Referrer-Policy.
 
 	# /api/health/ready (DB + OSRM) ist nur für interne Prüfungen: Es belegt eine DB-Verbindung,
 	# ruft OSRM auf und nennt die PostGIS-Version. Von außen nicht erreichbar (der Docker-Healthcheck
 	# der API läuft direkt im Container und braucht nur /api/health).
 	@ready path /api/health/ready /api/health/ready/
 	handle @ready {
+		import security_headers no-referrer
 		respond 404
 	}
 
 	@api path /api /api/*
 	handle @api {
+		import security_headers no-referrer
 		request_body {
 			max_size 64KB
 		}
 		reverse_proxy api:8000
 	}
 
+	# Frontend: SPA-Fallback, Cache-Header und Kompression übernimmt nginx im Container "web".
 	handle {
+		import security_headers strict-origin-when-cross-origin
 		reverse_proxy web:8080
 	}
 
 	# Fehlerseiten (z. B. 502, wenn api/web gerade nicht erreichbar sind): knapp, ohne Details,
 	# aber mit denselben Sicherheits-Headern.
 	handle_errors {
-		import security_headers
+		import security_headers no-referrer
 		respond "{err.status_code} {err.status_text}" {err.status_code}
 	}
 }

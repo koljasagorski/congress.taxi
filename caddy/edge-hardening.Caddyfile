@@ -8,10 +8,13 @@
 # die zweite Verteidigungslinie am Rand und trägt, was nur der Rand leisten kann (HSTS, CSP für das
 # Frontend, Body-Limit VOR der Weiterleitung).
 #
-# Einbindung (im Site-Block, vor den `handle`-Blöcken):
-#   import congress_edge_hardening
-# und im /api-Block zusätzlich das Body-Limit:
+# Einbindung: in JEDEM `handle`-Block (nicht einmal im Site-Block: der Block unten löscht "Server" und läuft
+# deshalb zurückgestellt, nach dem Reverse Proxy, und würde eine spätere Regel überstimmen). Argument =
+# Referrer-Policy: für die SPA `strict-origin-when-cross-origin` (die OSM-Tile-Usage-Policy verlangt einen
+# Referer; das Frontend lädt Kacheln mit referrerpolicy=strict-origin, es verlässt also nur die Origin die Seite),
+# für /api und die 404-Sperre `no-referrer`:
 #   handle @api {
+#       import congress_edge_hardening no-referrer
 #       request_body {
 #           max_size 64KB
 #       }
@@ -19,6 +22,12 @@
 #           header_up X-Forwarded-For {remote_host}
 #       }
 #   }
+#   handle {
+#       import congress_edge_hardening strict-origin-when-cross-origin
+#       reverse_proxy 10.10.10.80:8080      # Container `web` (WEB_BIND, siehe deploy/hel/README.md)
+#   }
+# img-src in der CSP unten nennt den Tile-Host: bei geändertem TILE_URL mitändern (im mitgelieferten Caddy
+# leitet caddy/tile-origin.sh ihn ab). Der öffentliche OSM-Tile-Server ist nur für Entwicklung vorgesehen.
 # TRUSTED_PROXIES der API muss dann 10.10.10.70 enthalten (setzt deploy/hel/ausrollen.sh), sonst
 # teilen sich alle Nutzer ein Rate-Limit.
 # `/api/health/ready` bleibt gesperrt (nur intern), siehe unten.
@@ -29,13 +38,19 @@
 		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
-		Referrer-Policy "no-referrer"
+		Referrer-Policy "{args[0]}"
 		Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=()"
 		-Server
 	}
 
+}
+
+# Sperre für den internen Bereitschaftspfad (als eigener `handle` vor den übrigen einbinden):
+#   import congress_block_ready
+(congress_block_ready) {
 	@ready path /api/health/ready /api/health/ready/
 	handle @ready {
+		import congress_edge_hardening no-referrer
 		respond 404
 	}
 }

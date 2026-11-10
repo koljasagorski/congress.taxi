@@ -75,3 +75,13 @@ restore: ## Backup einspielen: make restore IDENTITY=key.txt FILE=backups/x.dump
 
 cleanup: ## Retention-Cleanup einmal ausführen (DRY=1: nur zählen; CLEANUP_ARGS="--now 2027-02-01T00:00:00Z")
 	$(COMPOSE) run --rm --no-deps --entrypoint python cleanup -m app.cleanup $(if $(DRY),--dry-run,) $(CLEANUP_ARGS)
+
+# --- Frontend (Phase 6) ---
+# Dieselben Prüfungen wie der CI-Job "web". Benötigt Node >= 22.
+.PHONY: web-install web-check
+
+web-install: ## Frontend-Abhängigkeiten installieren (npm ci in web/)
+	cd web && npm ci --no-audit --no-fund
+
+web-check: ## Frontend prüfen: tsc, eslint, vitest, Build, check:external (wie CI)
+	cd web && npx tsc --noEmit && npm run lint && npm test && npm run build && npm run check:external

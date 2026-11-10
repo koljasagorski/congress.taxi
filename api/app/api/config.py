@@ -31,6 +31,7 @@ class MatchingConfig(BaseModel):
 
 class MapConfig(BaseModel):
     tile_url: str
+    attribution: str
     geocoder: Literal["none", "photon", "nominatim"]
 
 
@@ -64,7 +65,11 @@ async def get_public_config(settings: Annotated[Settings, Depends(get_settings)]
             detour_mode=settings.match_detour_mode,
             max_candidates=settings.match_max_candidates,
         ),
-        map=MapConfig(tile_url=settings.tile_url, geocoder=settings.geocoder),
+        map=MapConfig(
+            tile_url=settings.tile_url,
+            attribution=settings.tile_attribution,
+            geocoder=settings.geocoder,
+        ),
         limits=LimitsConfig(min_seats=1, max_seats=8),
         retention_days_after_event=settings.retention_days_after_event,
     )

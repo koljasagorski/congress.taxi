@@ -118,3 +118,26 @@ jobs:
         run: |
           cd api
           uv run pytest -q tests/test_security_backup.py tests/test_security_backup_purge.py tests/test_compose_config.py tests/test_security_caddy.py tests/test_security_caddy_api.py
+
+  # --- web (Phase 6): Typen, Lint, Tests, Build, Prüfung auf externe URLs, Container-Image ---
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm run check:external
+      - name: Container-Image bauen (nginx, baut und prüft die SPA erneut)
+        run: docker build --pull -t mitfahrer-web:ci .

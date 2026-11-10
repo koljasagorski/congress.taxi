@@ -47,7 +47,13 @@ Adresse kennt, kann das Konto minutenweise für Logins sperren. Bekannte Grenze 
 
 `GET /api/config` → 200, ohne Anmeldung, keine Geheimnisse: `event{name,lat,lon,start_date,end_date}`,
 `matching{prefilter_radius_m,max_detour_ratio,max_detour_minutes,detour_mode,max_candidates}`,
-`map{tile_url,geocoder}`, `limits{min_seats:1,max_seats:8}`, `retention_days_after_event`.
+`map{tile_url,attribution,geocoder}`, `limits{min_seats:1,max_seats:8}`, `retention_days_after_event`.
+
+**`map.attribution` (Phase 6, Erweiterung):** Quellenangabe zur Karte als String (Umgebungsvariable `TILE_ATTRIBUTION`, Standard
+`&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende`). Einfacher Text mit HTML-Entitäten
+und optionalen Links `<a href="https://…">…</a>`; das Frontend lässt nur das zu (alles andere wird zu Text) und zeigt es
+unter der Karte. Sie gehört zum Kartenserver aus `tile_url` und ist beim Wechsel mitzuändern. Der öffentliche OSM-Tile-Server
+ist laut Tile Usage Policy nur für Entwicklung gedacht; `TILE_URL` bleibt frei konfigurierbar, die CSP (`img-src`) folgt ihr.
 
 ## Fahrten (Phase 3) – alle Endpunkte erfordern Anmeldung
 
@@ -154,8 +160,11 @@ mit `404` (der Pfad belegt eine DB-Verbindung, ruft OSRM auf und nennt die PostG
 ## Sicherheit und Betrieb (Phase 7)
 
 * Security-Header an der API (`X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
-  `Cache-Control: no-store` für `/api`) und am Caddy (CSP, HSTS, `X-Content-Type-Options`, Frame-/Permissions-Policy).
-  CSP: Tile-Host aus `TILE_URL`, sonst nur `'self'`.
+  `Cache-Control: no-store` für `/api`) und am Caddy (CSP, HSTS, `X-Content-Type-Options`, Frame-/Permissions-Policy,
+  Referrer-Policy). CSP: Tile-Host aus `TILE_URL`, sonst nur `'self'`. **Referrer-Policy:** für die SPA
+  `strict-origin-when-cross-origin` (die OSM-Tile-Usage-Policy verlangt einen Referer; das Frontend lädt Kacheln mit
+  `referrerpolicy=strict-origin`, es geht nur die Origin raus), für `/api/*`, den gesperrten Pfad `/api/health/ready` und
+  Fehlerseiten weiter `no-referrer`.
 * Origin-Prüfung für `POST/PUT/PATCH/DELETE`: trägt die Anfrage einen `Origin`-Header, muss er in `ALLOWED_ORIGINS`
   (bzw. aus `DOMAIN` abgeleitet, `Settings.allowed_origin_list`) liegen, sonst 403 `forbidden`. Ohne `Origin` kein Fehler
   (Skripte, Tests) – die Cookies sind SameSite=Strict.
@@ -183,7 +192,15 @@ Reine SPA (React + Vite + TypeScript, Leaflet), spricht nur mit `/api` (gleiche 
 `/api/config`. Keine externen Fonts/CDNs/Tracker; Leaflet-Icons lokal. Seiten: Start (Erklärung + Datenschutzhinweis),
 Registrierung/Login, Fahrt anbieten, Mitfahrt suchen, Meine Fahrten & Anfragen, Datenschutz, Impressum (Platzhalter),
 Konto löschen. Deutsch Standard, i18n-Struktur für Englisch. Dev-Proxy: Vite leitet `/api` an `http://127.0.0.1:8000`.
-Build-Ausgabe `web/dist`; Container `web` (nginx, Port 8080, SPA-Fallback); Caddy leitet `/api/*` an `api:8000`, sonst an `web:8080`.
+Build-Ausgabe `web/dist`; Container `web` (nginx, Port 8080, SPA-Fallback auf `index.html`, `/assets/*` unveränderlich gecacht,
+`index.html` nie); Caddy leitet `/api/*` an `api:8000`, sonst an `web:8080` (im Profil `proxy` hängt `web` im Netz `proxy`, ohne
+Host-Port).
+
+**Fehlerbehandlung im Client:** Antworten von Caddy/nginx haben kein JSON-Fehlerformat; der Client bildet dann den Statuscode ab:
+`413` → `payload_too_large` (Body > 64 KB), `429` → `rate_limited` (`Retry-After` nur als ganze Sekunden ausgewertet),
+`502/503/504` → `service_unavailable`. Anzeige der Umweg-Werte siehe „Matching“ (≈-Angaben ohne Nachberechnung). Kontaktfreigabe:
+E-Mail nur bei `status == accepted` und gesetztem `counterpart_email`. `DELETE /api/me` erwartet 204 und meldet danach ab.
+Schreibende Aufrufe tragen die Origin der Seite; im Dev-Server (`http://localhost:5173`) deshalb `ALLOWED_ORIGINS` setzen.
 
 ## Dateibesitz (Merge-Konflikte vermeiden)
 

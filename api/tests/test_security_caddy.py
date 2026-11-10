@@ -245,7 +245,10 @@ def csp_directives(value: str) -> dict[str, list[str]]:
     return out
 
 
-def assert_caddy_headers(r: httpx.Response) -> None:
+SPA_REFERRER = "strict-origin-when-cross-origin"
+
+
+def assert_caddy_headers(r: httpx.Response, referrer: str = "no-referrer") -> None:
     csp = csp_directives(r.headers["content-security-policy"])
     assert csp["default-src"] == ["'self'"]
     assert csp["frame-ancestors"] == ["'none'"]
@@ -256,7 +259,8 @@ def assert_caddy_headers(r: httpx.Response) -> None:
     assert r.headers["strict-transport-security"] == "max-age=31536000"
     assert r.headers["x-content-type-options"] == "nosniff"
     assert r.headers["x-frame-options"] == "DENY"
-    assert r.headers["referrer-policy"] == "no-referrer"
+    # genau einmal; SPA: Origin als Referer für den Tile-Server, /api und Fehlerseiten: keiner
+    assert r.headers.get_list("referrer-policy") == [referrer]
     assert "geolocation=(self)" in r.headers["permissions-policy"]
     assert "server" not in r.headers and "via" not in r.headers
 
@@ -267,8 +271,11 @@ def test_headers_on_api_and_frontend_routes(stack: Stack) -> None:
     assert_caddy_headers(api)
     web = stack.get("/karte")
     assert web.status_code == 200 and "uri=/karte" in web.text  # ging an "web"
-    assert_caddy_headers(web)
+    assert_caddy_headers(web, SPA_REFERRER)
+    assert_caddy_headers(stack.get("/"), SPA_REFERRER)
+    assert_caddy_headers(stack.get("/assets/index-abc123.js"), SPA_REFERRER)
     assert_caddy_headers(stack.get("/api"))  # ohne Slash ebenfalls zur API
+    assert_caddy_headers(stack.get("/api/health/ready"))  # gesperrt, aber mit Header
 
 
 def test_request_body_limit_on_api(stack: Stack) -> None:

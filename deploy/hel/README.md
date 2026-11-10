@@ -79,7 +79,15 @@ dortigen Muster: Sicherung → Datei neben die alte legen → `caddy validate` �
 Im **Teilstand** reicht der Rand nur `/api/health` durch; `/`, `/api/docs`, `/api/openapi.json` und
 `/api/health/ready` liefern `503 „im Aufbau“` (die API selbst antwortet auf die ersten beiden in `production` ohnehin
 mit 404; `/api/health/ready` bleibt auch beim Öffnen des Rands von außen zu). Das wird mit Phase 6/7 geöffnet (Frontend, Security-Header,
-Rate-Limits). Der Rand hat keine `log`-Direktive (keine IPs im Log).
+Rate-Limits).
+
+**Frontend freischalten (Phase 6, noch nicht ausgeführt):** (1) `make up` baut seit Phase 6 auch den Container `web` (Node-Build, nginx, Port 8080,
+standardmäßig nur `127.0.0.1`); für den Rand `WEB_BIND=10.10.10.80` in `.env` setzen. (2) In `nftables.conf` Port 8080 wie 8000 nur für
+`10.10.10.70` öffnen (Eingabekette und `forward`-Regel, sonst umgehen veröffentlichte Docker-Ports die Kette). (3) Im Rand-Block
+`caddy/edge-hardening.Caddyfile` einbinden (Referrer-Policy je Zweig: SPA `strict-origin-when-cross-origin`, `/api` `no-referrer`,
+CSP-`img-src` passend zu `TILE_URL`) und `reverse_proxy 10.10.10.80:8080` für alles außer `/api`. (4) Vor dem Livegang `TILE_URL` und
+`TILE_ATTRIBUTION` auf einen für den Betrieb zulässigen Kartenserver setzen (OSM-Standard-Tiles nur Entwicklung) sowie die Platzhalter in
+Datenschutzerklärung/Impressum (`web/src/i18n/de.ts`) ausfüllen. Der Rand hat keine `log`-Direktive (keine IPs im Log).
 
 ## DNS (Cloudflare, Zone `sgr.ski`, „DNS only“, TTL 60)
 

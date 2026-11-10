@@ -6,7 +6,8 @@
 # Danach wie gewohnt:  make up
 #
 # Was diese Datei ändert (Compose-Profile können keine Ports entfernen, deshalb eine eigene Datei):
-#   * Die API veröffentlicht KEINEN Port mehr auf dem Host; erreichbar ist sie nur über Caddy.
+#   * API und Frontend (web) veröffentlichen KEINEN Port mehr auf dem Host; erreichbar sind sie nur über Caddy.
+#   * Das Frontend (web) hängt zusätzlich im Netz "proxy", damit Caddy `web:8080` auflösen kann.
 #   * Die API hängt zusätzlich im Netz "proxy" (siehe docker-compose.yml, dort hat Caddy eine feste
 #     Adresse) und vertraut X-Forwarded-For genau von dieser einen Adresse: TRUSTED_PROXIES wird auf
 #     die /32 von Caddy gesetzt und überschreibt einen Wert aus .env. Ein ganzes Docker-Netz zu
@@ -25,3 +26,9 @@ services:
       - proxy
     environment:
       TRUSTED_PROXIES: ${CADDY_IPV4:-172.29.71.2}
+
+  web:
+    ports: !reset []
+    networks:
+      - default
+      - proxy

@@ -54,7 +54,7 @@ def render(
     shutil.copy(REPO / ".env.example", project / ".env")
     with (project / ".env").open("a") as fh:
         fh.write("\n" + dotenv + "\n")
-    for name in ("api", "caddy"):
+    for name in ("api", "caddy", "web"):
         if not (project / name).exists():
             (project / name).symlink_to(REPO / name)
     cmd = ["docker", "compose", "--project-directory", str(project)]
@@ -105,6 +105,19 @@ def test_proxy_mode_hides_api_port_and_trusts_exactly_caddy(tmp_path: Path) -> N
     assert published == ["caddy"]
 
 
+def test_web_is_internal_and_reachable_for_caddy_only_in_proxy_mode(tmp_path: Path) -> None:
+    # Standard: Frontend-Container nur auf Loopback veröffentlicht (Entwicklung/Rand-Proxy)
+    base = render(tmp_path, BASE)["services"]["web"]
+    assert [(p["host_ip"], p["target"]) for p in base["ports"]] == [("127.0.0.1", 8080)]
+    # Mit Caddy: kein Host-Port mehr, aber im Netz "proxy", damit Caddy `web:8080` auflöst
+    cfg = render(tmp_path, BASE, PROXY, profile=True)
+    web, caddy = cfg["services"]["web"], cfg["services"]["caddy"]
+    assert not web.get("ports"), web.get("ports")
+    assert "proxy" in web["networks"] and "default" in web["networks"]
+    assert set(caddy["depends_on"]) == {"api", "web"}
+    assert web.get("read_only") is True and "ALL" in web.get("cap_drop", [])
+
+
 def test_proxy_mode_follows_custom_subnet_and_address(tmp_path: Path) -> None:
     cfg = render(
         tmp_path, BASE, PROXY, profile=True,
@@ -117,7 +130,7 @@ def test_proxy_mode_follows_custom_subnet_and_address(tmp_path: Path) -> None:
 
 def test_every_service_rotates_its_logs(tmp_path: Path) -> None:
     cfg = render(tmp_path, BASE, PROXY, profile=True)
-    for name in ("db", "osrm", "api", "caddy", "cleanup"):
+    for name in ("db", "osrm", "api", "web", "caddy", "cleanup"):
         logging = cfg["services"][name].get("logging")
         assert logging and logging["driver"] == "json-file", name
         assert int(logging["options"]["max-file"]) >= 2, name

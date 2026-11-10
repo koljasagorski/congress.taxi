@@ -1,6 +1,6 @@
 # Mitfahrer-Matching 40C3 – Übergabe für Coding-Agenten
 
-Selbst gehostete Mitfahrer-Matching-App (FastAPI + PostGIS + OSRM, später React/Leaflet, Caddy).
+Selbst gehostete Mitfahrer-Matching-App (FastAPI + PostGIS + OSRM, React/Vite/Leaflet-Frontend in `web/`, Caddy).
 Zielplattform: **Proxmox** (Docker Compose). Teilstand läuft seit 2026-11-10 in LXC 220 auf `hel` (https://congress.sgr.ski), Betrieb/Rückbau/Offenes: `deploy/hel/README.md`. Entscheidungen/Annahmen: `PLAN.md` (maßgeblich).
 
 ## Arbeitsstand
@@ -9,7 +9,7 @@ Siehe Phasen-Checkliste in `PLAN.md`. Jede Phase = ein Conventional-Commit, grü
 
 ## Befehle
 
-- `make env DEV=1` · `make osrm-prepare` · `make up` · `make test` · `make lint` (alles in `Makefile`)
+- `make env DEV=1` · `make osrm-prepare` · `make up` · `make test` · `make lint` · `make web-check` (Frontend: tsc, eslint, vitest, Build, check:external; alles in `Makefile`)
 - Tests brauchen laufende DB (`make test` startet sie) und lesen `.env`.
 
 ## Fallstricke (bereits erlebt)
@@ -27,13 +27,16 @@ Siehe Phasen-Checkliste in `PLAN.md`. Jede Phase = ein Conventional-Commit, grü
   öffentlichen Repo. Entfernt, `.gitignore` (`.env *`) und Test `test_repo_hygiene.py` ergänzt, Dev-Secrets rotiert;
   die Historie bleibt (kein Force-Push) – alte Werte gelten als verbrannt. Produktiv-Secrets entstehen auf dem Gast
   und waren nie betroffen. Vor jedem Commit `git status` lesen.
+- **Frontend-Dev-Server** (`npm run dev`, Port 5173): schreibende Aufrufe tragen die Origin `http://localhost:5173`; ohne `ALLOWED_ORIGINS=http://localhost:5173` in `.env` antwortet die API 403.
+- Der öffentliche OSM-Tile-Server ist nur für Entwicklung; `TILE_URL` **und** `TILE_ATTRIBUTION` für den Betrieb setzen (CSP folgt `TILE_URL`).
+- Caddy: Referrer-Policy je `handle`-Zweig (SPA `strict-origin-when-cross-origin`, `/api` `no-referrer`); ein Site-weites `header` mit `-Server` läuft zurückgestellt und würde `/api` überstimmen.
 - Logs dürfen keine Koordinaten/IPs enthalten (Uvicorn `--no-access-log`, eigenes Request-Log ohne Query).
 
 ## Server (hel) – Kurzfassung
 
 - Nur CI-geprüfte Commits ausrollen (`deploy/hel/README.md`, „Anlegen“); SSH in **wenige gebündelte Sitzungen**;
   keine Schlüssel, `~/.ssh/config`- oder `.env`-Inhalte ins Repo/in Protokolle. Infos zum Wirt: Repo `patchletter.com`.
-- Der Rand-Caddy (CT 180) reicht im Teilstand nur `/api/health` durch – mit Phase 6/7 den Block öffnen.
+- Der Rand-Caddy (CT 180) reicht im Teilstand nur `/api/health` durch – das Frontend (Phase 6) ist **nicht** ausgerollt; Block öffnen und `web` freischalten siehe `deploy/hel/README.md`.
 - **Vor Phase 2 live:** PBS-Sicherung von CT 220 entscheiden (siehe README, „Offene Entscheidungen“).
 
 ## Datenschutz-Leitplanken

@@ -52,6 +52,12 @@ class Settings(BaseSettings):
 
     # Karte
     tile_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    #: Urheber-/Quellenangabe unter der Karte (Pflicht der Kartendaten-Lizenz, z. B. ODbL bei OSM).
+    #: Einfacher Text; erlaubt sind nur Links der Form <a href="https://…">Text</a> (das Frontend
+    #: lässt nichts anderes zu). Beim Wechsel des Kartenservers (TILE_URL) mitändern.
+    tile_attribution: str = (
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
+    )
     geocoder: Literal["none", "photon", "nominatim"] = "none"
 
     # Auth

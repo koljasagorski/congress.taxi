@@ -1,6 +1,6 @@
 # PLAN – Mitfahrer-Matching für den 40C3
 
-Stand: 2026-11-10 · Status: **Phasen 1–5 und 7 abgeschlossen (Phase 6 Frontend und 8 offen)** · Teilstand läuft auf Proxmox (hel, CT 220) unter https://congress.sgr.ski (nur `/api/health`)
+Stand: 2026-11-10 · Status: **Phasen 1–7 abgeschlossen (Phase 8 offen)** · Teilstand läuft auf Proxmox (hel, CT 220) unter https://congress.sgr.ski (nur `/api/health`)
 
 Dieses Dokument hält Phasen, Annahmen, Entscheidungen und offene Punkte fest.
 Alles hier ist bewusst knapp; Details stehen im README (ab Phase 8).
@@ -135,6 +135,14 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
     eigener Abholpunkt liefert damit keine genauere Umweg-Information als die Suche. Das enge Rate-Limit für
     `POST /api/rides/{id}/requests` gibt es seit Phase 7 (`RATE_LIMIT_REQUESTS_CREATE_PER_HOUR`, je Nutzer).
 
+19. **Frontend (Phase 6).** SPA ohne Browser-Speicher, kein Auto-Login nach der Registrierung, Karte auch per Tastatur/Koordinaten
+    bedienbar. Umweg-Werte werden so angezeigt, wie die API sie vergröbert liefert („≈ +1,5 km, ≈ +4 Min.“). Die **Quellenangabe**
+    der Karte kommt aus `GET /api/config` (`map.attribution`, `TILE_ATTRIBUTION`), das Frontend lässt darin nur Text und
+    https-Links zu. Der öffentliche OSM-Tile-Server bleibt **nur Entwicklung**; `TILE_URL`/`TILE_ATTRIBUTION` sind konfigurierbar,
+    die CSP folgt `TILE_URL`. **Referrer-Policy:** SPA `strict-origin-when-cross-origin`, `/api` und Fehlerseiten `no-referrer`
+    (Caddy setzt die Header je `handle`-Zweig; ein Site-weiter Block würde wegen `-Server` zurückgestellt laufen und `/api` überstimmen).
+    Geocoder (Photon/Nominatim) sind bewusst nicht angebunden (externe Anfragen aus dem Browser).
+
 ## Offene Fragen (nicht blockierend)
 
 - Endgültiger Ort und Datum des 40C3 → `EVENT_*` in `.env` setzen.
@@ -148,7 +156,7 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
 - [x] **Phase 3** Fahrten anlegen/listen/ändern/stornieren inkl. OSRM-Route und Snap-Prüfung
 - [x] **Phase 4** Matching (Vorfilter + Umweg) inkl. Randfall-Tests, Demo-Daten (`make seed-demo`)
 - [x] **Phase 5** Anfragen/Accept mit Locking, Kontaktfreigabe (E-Mail erst bei `accepted`, nur Beteiligte; grobe Umweg-Werte)
-- [ ] Phase 6 Frontend
+- [x] **Phase 6** Frontend (React/Vite/TypeScript/Leaflet, `web/`), Container `web`, Caddy liefert es aus, CI-Job `web`
 - [x] **Phase 7** Retention-Cleanup, Backup (age), Security-Header, Rate-Limits (IP, E-Mail, Nutzer), Caddy
 - [ ] Phase 8 E2E-Tests, README, Datenschutzdoku, Aufräumen
 
@@ -215,6 +223,24 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
   Host erreichbar, `/api/health/ready` über Caddy 404; danach `down -v`.
 - **Nicht lokal geprüft:** `shellcheck` (nicht installiert; läuft in der CI), Let's-Encrypt-Zertifikate (lokal interne CA),
   Lauf auf `hel` (nichts ausgerollt), Last/Dauerbetrieb, mehrere Worker.
+
+### Phase 6 (lokal: macOS arm64, Docker Desktop, echtes PostGIS + OSRM Hamburg)
+
+- Integriert aus dem Entwicklungszweig (Squash) und nachgezogen: vergröberte Umweg-Werte (Typen/Anzeige/Tests), Fehlerbehandlung
+  für `413`/`429`/`502-504` ohne JSON-Körper, `map.attribution` in `GET /api/config` (Vertrag, `test_config_endpoint.py`),
+  Referrer-Policy je Zweig im Caddyfile, `web` im Netz `proxy` und als Caddy-Abhängigkeit, CI-Job `web` (tsc, eslint, vitest,
+  Build, `check:external`, Docker-Build), `make web-check`.
+- Ausgeführt: `make lint` grün; `make test` (Gesamtsuite, `REQUIRE_OPS_TESTS=1`): 783 passed; `make web-check`: tsc, eslint,
+  vitest (102 Tests), Build, `check:external` grün.
+- Real ausgeführt: `docker compose -f docker-compose.yml -f docker-compose.proxy.yml --profile proxy up` (api, web, caddy gegen
+  die laufende DB/OSRM, Caddy auf `http://localhost:8088`): `/` und `/mitfahrt-suchen` 200 `text/html` mit `Cache-Control: no-store`,
+  `/assets/*.js` `public, max-age=31536000, immutable`, Referrer-Policy SPA `strict-origin-when-cross-origin` / `/api/*` (auch 404, 401,
+  413) `no-referrer`, CSP `img-src 'self' data: https://tile.openstreetmap.org`, `/api/health/ready` 404, 70-KB-Body → 413;
+  Registrieren → Anmelden → `DELETE /api/me` → 204 mit gelöschtem Cookie, danach `GET /api/me` 401, die API weist Schreibzugriffe mit einer Origin außerhalb `ALLOWED_ORIGINS`/`DOMAIN` mit 403 ab (auch `http://localhost:8088`, solange `ALLOWED_ORIGINS` den Port nicht nennt; die curl-Läufe sendeten `Origin: http://localhost`).
+  Der `web`-Container läuft mit `read_only`, `cap_drop: ALL`. Danach alles wieder entfernt.
+- **Nicht geprüft:** Verhalten in einem echten Browser (der Playwright-Browser war in dieser Umgebung nicht verfügbar): CSP-Verstöße
+  in der Konsole, Kartendarstellung, Tastaturbedienung – die Komponenten sind nur in jsdom getestet. Let's-Encrypt/TLS am `web`-Pfad.
+  Frontend auf `hel`: nicht ausgerollt, der Rand-Caddy reicht weiter nur `/api/health` durch (siehe `deploy/hel/README.md`).
 
 ## Deployment auf Proxmox (hel) – Teilstand ausgeführt am 2026-11-10
 

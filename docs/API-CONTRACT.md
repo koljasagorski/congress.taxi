@@ -40,13 +40,13 @@ Mitfahrten zurück (Sperr-Reihenfolge: Fahrt vor Anfrage, Gutschrift erst nach d
 Login/Register sind per `rate_limit(...)` (`app/ratelimit.py`) begrenzt: `rate_limit_login_per_min`,
 `rate_limit_register_per_hour` (je Client-IP, zählen **jeden** Versuch). **Zusätzlich** zählen beim Login je **normalisierter
 E-Mail** nur **Fehlversuche** (Fenster 60 s, Salt-Hash im Speicher, auch für unbekannte Konten – kein Orakel):
-`rate_limit_login_fail_per_email_ip_per_min` (je E-Mail+IP, Standard 5) und `rate_limit_login_fail_per_email_per_min` (je E-Mail
+`rate_limit_login_fail_per_email_ip_per_min` (je E-Mail+IP, IPv6 als /48, Standard 5) und `rate_limit_login_fail_per_email_per_min` (je E-Mail
 über alle Adressen, Standard 30, deutlich höher). Ein Login mit **richtigem** Passwort geht durch, solange keines der beiden
 Limits erreicht ist; wer die Adresse des Opfers kennt, sperrt dessen Login von einer anderen IP aus daher nicht aus. Ist ein
 Limit erreicht, antwortet der Login **vor** der Passwortprüfung mit `429 rate_limited` + `Retry-After` – **auch bei richtigem
 Passwort** und identisch für bekannte wie unbekannte E-Mails (sonst wäre 200/429 ein Passwort-Orakel und Raten unbegrenzt).
 Die Plätze werden vor der Prüfung belegt und bei Erfolg zurückgegeben (parallele Versuche unterlaufen das Limit nicht).
-Grenzen: ein Botnetz mit vielen Adressen kann das globale Limit füllen und das Konto minutenweise sperren; Nutzer hinter
+Grenzen: wer von mindestens 6 verschiedenen Adressen (Standardwerte) Fehlversuche schickt, füllt das globale Limit und sperrt das Konto minutenweise; Nutzer hinter
 derselben NAT (Kongress-WLAN) teilen sich die E-Mail+IP-Grenze. Bekannte Grenze außerdem: E-Mail-Adressen sind nicht verifiziert.
 (Der frühere Schlüssel `rate_limit_login_per_email_per_min` entfällt; ein alter Wert in einer `.env` wird ignoriert.)
 

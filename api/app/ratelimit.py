@@ -366,20 +366,29 @@ def _key(name: str, ip: str) -> str:
     return _digest(name, normalize_ip(ip))
 
 
-def overflow_group(name: str, ip: str) -> str:
-    """Gruppe für den Überlauf bei voller Tabelle: IPv6 grob als /48, IPv4 die Adresse selbst.
+def coarse_ip(raw: str) -> str:
+    """Grobe Client-Identität: IPv6 als /48 (eine typische Zuweisung), IPv4 die Adresse selbst.
 
-    Wer eine ganze IPv6-Zuweisung besitzt, erzeugt beliebig viele /64-Schlüssel – im Überlauf
-    zählen sie alle in *einem* Teil-Eimer. Salt-Hash wie alle Schlüssel (nie die Adresse im
-    Speicher oder Log).
+    Wer eine ganze IPv6-Zuweisung besitzt, hat 65 536 verschiedene /64-Präfixe. Für Zähler, die
+    gezieltes Aussperren verhindern (E-Mail+IP) und für die Gruppen im Überlauf zählt deshalb das
+    /48, nicht das /64 des normalen Pro-IP-Limits.
     """
     try:
-        addr = _parse_ip(ip)
+        addr = _parse_ip(raw)
     except ValueError:
-        return _digest(name, "group|" + (ip.strip()[:64] or "unknown"))
+        return raw.strip()[:64] or "unknown"
     if isinstance(addr, IPv6Address):
-        return _digest(name, "group|" + str(ip_network(f"{addr}/48", strict=False)))
-    return _digest(name, "group|" + str(addr))
+        return str(ip_network(f"{addr}/48", strict=False))
+    return str(addr)
+
+
+def overflow_group(name: str, ip: str) -> str:
+    """Gruppe für den Überlauf bei voller Tabelle (:func:`coarse_ip`), als Salt-Hash.
+
+    Im Überlauf zählen alle /64-Schlüssel einer IPv6-Zuweisung in *einem* Teil-Eimer. Nie die
+    Adresse im Speicher oder Log.
+    """
+    return _digest(name, "group|" + coarse_ip(ip))
 
 
 def _digest(name: str, value: str) -> str:
@@ -439,7 +448,9 @@ class Slot:
     identity: str
     limit: int
     window_s: float
-    #: Wenn gesetzt, zählt die Identität je IP (``identity|IP/64``) und gruppiert im Überlauf
+    #: Wenn gesetzt, zählt die Identität je grober IP (``identity|`` + :func:`coarse_ip`: IPv6 /48,
+    #: IPv4 Adresse) – ein Angreifer wechselt innerhalb seiner Zuweisung nicht den Zähler
+
     ip: str | None = None
 
 
@@ -469,7 +480,7 @@ def reserve_slots(slots: list[Slot]) -> Reservation:
         if slot.ip is None:
             key, group = _digest(slot.name, slot.identity), None
         else:
-            key = _digest(slot.name, f"{slot.identity}|{normalize_ip(slot.ip)}")
+            key = _digest(slot.name, f"{slot.identity}|{coarse_ip(slot.ip)}")
             group = overflow_group(slot.name, slot.ip)
         token, retry_after = limiter.reserve(slot.name, key, slot.limit, slot.window_s, group=group)
         if token is None:

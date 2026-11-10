@@ -124,12 +124,13 @@ def test_overflow_recovers_when_the_table_frees_up() -> None:
     lim.hit("a", 5, 60, now=0.0)
     lim.hit("b", 5, 60, now=0.0)
     cap = OVERFLOW_FACTOR  # Limit 1
-    assert all(lim.hit(f"x{i}", 1, 60, now=1.0)[0] for i in range(cap))
-    assert not lim.hit("y", 1, 60, now=2.0)[0]  # gemeinsamer Eimer erschöpft
+    assert all(lim.hit(f"x{i}", 1, 60, now=1.0, group=f"g{i % 11}")[0] for i in range(cap))
+    assert lim._groups  # die Gruppen-Eimer wurden benutzt
+    assert not lim.hit("y", 1, 60, now=2.0, group="g-neu")[0]  # gemeinsamer Eimer erschöpft
     # nach Ablauf der Fenster ist alles wieder frei und "y" bekommt einen eigenen Zähler
-    assert lim.hit("y", 1, 60, now=100.0)[0]
+    assert lim.hit("y", 1, 60, now=100.0, group="g-neu")[0]
     assert "y" in lim._hits and not lim.overflowed
-    assert not lim._groups  # abgelaufene Gruppen-Eimer sind weg
+    assert not lim._groups and not lim._group_expiry  # abgelaufene Gruppen-Eimer sind weg
 
 
 def test_overflow_warning_names_the_table_but_no_client(caplog: pytest.LogCaptureFixture) -> None:

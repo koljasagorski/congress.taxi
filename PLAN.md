@@ -97,13 +97,14 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
    Eine Limiter-Tabelle je Name (50 000 Schlüssel); IPv6 nach /64; bei voller Tabelle werden aktive Zähler nie
    verdrängt (abgelaufene fliegen raus). Neue Schlüssel zählen bei voller Tabelle im **Überlauf** (fail-closed, aber
    großzügig): gemeinsamer Eimer mit dem **50-fachen** Einzel-Limit (`OVERFLOW_FACTOR`: Login 10/min → 500/min,
-   Registrierung 10/h → 500/h – ein Vielfaches des Andrangs auf dem Kongress, aber endlich) und je Gruppe (IPv6 gröber
-   als /48, IPv4 die Adresse; höchstens 256 Gruppen) ein Teil-Eimer mit dem **5-fachen** Limit: Ein Angreifer mit
+   Registrierung 10/h → 500/h – ein Vielfaches des Andrangs auf dem Kongress, aber endlich) und je Gruppe (IPv6 als /48,
+   IPv4 die Adresse; höchstens 256 Gruppen) ein Teil-Eimer mit dem **5-fachen** Limit: Ein Angreifer mit
    einer IPv6-Zuweisung erschöpft nur seinen Teil-Eimer, erst zehn Gruppen leeren den gemeinsamen. Speicher strikt
    begrenzt (`max_keys × Limit + 50 × Limit + 256 × 5 × Limit` Zeitstempel je Tabelle); die Log-Warnung nennt nur den
    Tabellennamen, nie eine Adresse. Zusätzlich Limits je Nutzer (`/api/match`, Fahrt anlegen, Anfrage senden).
    **Login-Limits (Entscheidung):** Das IP-Limit zählt jeden Versuch; je normalisierter E-Mail zählen nur
-   **Fehlversuche** – eng je E-Mail+IP (5/min), global je E-Mail deutlich höher (30/min). Wer die Adresse des Opfers
+   **Fehlversuche** – eng je E-Mail+IP (5/min; IPv6 als /48, damit das Wechseln der /64-Präfixe einer
+   Zuweisung nichts bringt), global je E-Mail deutlich höher (30/min). Wer die Adresse des Opfers
    kennt, kann dessen Login so von einer anderen Adresse aus nicht mehr aussperren (früher: 5 beliebige Anfragen/min
    genügten). Die Plätze werden *vor* der awaiteten Passwortprüfung belegt und bei richtigem Passwort zurückgegeben
    (atomar: parallele Versuche überschießen das Limit nicht). Ist ein Limit erreicht, kommt vor der Prüfung 429 – auch
@@ -112,9 +113,10 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
    bisher durch den Dummy-Hash angeglichen). Konfig-Schlüssel umbenannt: `RATE_LIMIT_LOGIN_PER_EMAIL_PER_MIN` →
    `RATE_LIMIT_LOGIN_FAIL_PER_EMAIL_IP_PER_MIN` / `RATE_LIMIT_LOGIN_FAIL_PER_EMAIL_PER_MIN` (ein alter Wert in einer
    vorhandenen `.env` wird still ignoriert – bei Ausrollen umbenennen).
-   **Bekannte Grenzen:** (a) Ein Botnetz mit vielen Adressen kann das globale Fehlversuchs-Limit je E-Mail füllen und
-   das Konto dann minutenweise (bis das älteste Fenster abläuft) für Logins sperren – das ist der Preis des Schutzes
-   vor verteiltem Raten; hinter gemeinsamer NAT (Kongress-WLAN) teilen sich Nutzer außerdem die E-Mail+IP-Grenze.
+   **Bekannte Grenzen:** (a) Wer von mindestens 6 verschiedenen Adressen (IPv4 bzw. IPv6-/48; bei den Standardwerten
+   6 × 5 = 30 Fehlversuche/min) falsche Passwörter schickt, füllt das globale Fehlversuchs-Limit je E-Mail und sperrt
+   das Konto dann minutenweise (bis das älteste Fenster abläuft) für Logins – das ist der Preis des Schutzes
+   vor verteiltem Raten (größeres Botnetz nicht nötig, aber eine einzelne Adresse genügt nicht mehr); hinter gemeinsamer NAT (Kongress-WLAN) teilen sich Nutzer außerdem die E-Mail+IP-Grenze.
    (b) Sehr viele *verschiedene* IPv6-/48- bzw. IPv4-Adressen können den gemeinsamen Überlauf-Eimer weiterhin ausschöpfen
    (Registrierung dann bis zu 1 h für neue Clients ohne Zähler); bestehende Zähler bleiben immer unberührt.
    (c) Alle Zähler liegen im Prozessspeicher (ein Worker, Neustart leert sie); mehrere Worker bräuchten einen

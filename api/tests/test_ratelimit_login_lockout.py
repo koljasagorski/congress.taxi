@@ -67,6 +67,24 @@ async def test_attacker_on_one_ip_cannot_fill_the_global_counter(
             assert (await attempt(client, VICTIM, PASSWORD, f"198.51.100.{i}")).status_code == 200
 
 
+async def test_ipv6_attacker_rotating_64s_cannot_lock_out_the_victim(
+    client: httpx.AsyncClient, victim: dict[str, Any]
+) -> None:
+    """Eine IPv6-Zuweisung (/48) hat 65 536 /64-Präfixe: E-Mail+IP zählt dort gröber als das /64."""
+    with limits(
+        rate_limit_login_fail_per_email_ip_per_min=3, rate_limit_login_fail_per_email_per_min=6
+    ):
+        codes = [
+            (await attempt(client, VICTIM, WRONG, f"2001:db8:aa:{i:x}::1")).status_code
+            for i in range(10)  # zehn verschiedene /64 im selben /48
+        ]
+        assert codes == [401, 401, 401] + [429] * 7  # nach 3 Fehlversuchen ist das ganze /48 dicht
+        # der Angreifer hat den globalen Zähler (6) nicht gefüllt: das Opfer kommt durch
+        assert (await attempt(client, VICTIM, PASSWORD, "198.51.100.7")).status_code == 200
+        # ein anderes /48 ist nicht betroffen
+        assert (await attempt(client, VICTIM, WRONG, "2001:db8:bb::1")).status_code == 401
+
+
 async def test_successful_logins_are_not_counted(
     client: httpx.AsyncClient, victim: dict[str, Any]
 ) -> None:

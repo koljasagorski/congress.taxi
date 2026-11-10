@@ -1,0 +1,127 @@
+# PLAN – Mitfahrer-Matching für den 40C3
+
+Stand: 2026-11-10 · Status: **Phase 1 abgeschlossen** (CI-Lauf auf Ubuntu steht noch aus)
+
+Dieses Dokument hält Phasen, Annahmen, Entscheidungen und offene Punkte fest.
+Alles hier ist bewusst knapp; Details stehen im README (ab Phase 8).
+
+## Zielplattform: Proxmox
+
+Alles läuft auf **einer Proxmox-VM** (empfohlen) oder einem Proxmox-LXC-Container.
+
+| | VM (Standard) | LXC (dokumentiert, nicht empfohlen) |
+|---|---|---|
+| OS | Debian 12/13 oder Ubuntu 24.04 LTS, amd64 | dito |
+| Docker | Docker Engine + Compose v2 (offizielles Repo) | Docker im LXC braucht `nesting=1` (+ `keyctl=1`), Cgroup-/AppArmor-Eigenheiten |
+| Isolation | eigener Kernel, kein Sonderwissen nötig | geteilter Host-Kernel |
+| Backup | Proxmox-Snapshot/vzdump **zusätzlich** zum `pg_dump`-Skript | dito |
+
+- CPU-Typ der VM auf `host` stellen (OSRM/PostGIS profitieren von AVX2).
+- Reverse Proxy: **Caddy** (eigenes TLS) *oder* – bei Coolify/vorgeschaltetem Proxy – Caddy per
+  Compose-Profil abgeschaltet (Phase 7), damit Port 80/443 nicht kollidieren.
+- Es gibt keine Abhängigkeit vom Docker-Socket; alle Secrets liegen in `.env`.
+
+### Ressourcen (Stand der Recherche, **nicht lokal verifiziert**)
+
+| Größe | Wert | Quelle/Status |
+|---|---|---|
+| `germany-latest.osm.pbf` | 4,9 GB | gemessen (Geofabrik, 2026-11-10) |
+| RAM `osrm-extract` für Deutschland | ≈ 20 GB Peak | **extrapoliert**: Europa (28 GB PBF) ≈ 118 GB Peak laut OSRM-Issue #6146, linear auf 4,9 GB skaliert. Ungeprüft. |
+| RAM `osrm-routed` (Betrieb, MLD) | ≈ 7 GB | **extrapoliert** (Europa ≈ 39 GB). Ein Blog nennt 3–5 GB. Ungeprüft. |
+| Disk | ≥ 40 GB frei | grobe Schätzung (PBF 5 + Graph 10–15 + DB + Images) |
+
+Konsequenz: Die Vorbereitung (`make osrm-prepare`) für Deutschland entweder auf einer
+temporär größeren VM ausführen und `data/osrm/` übernehmen, oder ein kleineres Extrakt
+wählen (z. B. nur die für die Anreise relevanten Bundesländer). Die Betriebs-VM braucht
+dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54 MB).**
+
+## Annahmen und Entscheidungen
+
+1. **Images.** PostGIS: `postgis/postgis:16-3.5` (nur amd64 – passt zur Proxmox-VM).
+   Auf arm64-Entwicklungsrechnern per `POSTGIS_IMAGE=imresamu/postgis:16-3.5-bookworm`
+   (Multi-Arch, geprüft). OSRM: `ghcr.io/project-osrm/osrm-backend:v26.4.0` – das ist das
+   neueste *tatsächlich veröffentlichte* Image (Release v26.11.0 hat noch keines; geprüft).
+2. **Dev-Extrakt = Hamburg, nicht Bremen.** Das Standardziel (CCH Hamburg) liegt außerhalb
+   von `bremen-latest`; OSRM würde den Zielpunkt still auf eine weit entfernte Straße
+   snappen. Hamburg (54 MB) deckt das Ziel ab und hat mit der Elbe eine echte
+   „kleine Luftlinie, großer Umweg“-Situation für die Matching-Tests.
+3. **Snap-Prüfung.** Punkte (Start, Pickup, Ziel), deren nächste Straße weiter als
+   `MATCH_MAX_SNAP_DISTANCE_M` (Standard 500 m) entfernt ist, werden abgelehnt. `/api/health/ready`
+   meldet die Snap-Distanz des Eventziels und warnt, wenn das Ziel nicht im Extrakt liegt.
+4. **Umweg-Schwelle.** „max. 20 % Mehrdistanz *oder* max. 25 Minuten Mehrfahrzeit“ wird
+   wörtlich gelesen: **eines von beiden genügt** (`MATCH_DETOUR_MODE=any`). Umschaltbar auf
+   `all` (beide müssen erfüllt sein). Werte per Env.
+5. **Event-Datum.** Die Spezifikation nennt keines. Neu: `EVENT_START_DATE`, `EVENT_END_DATE`.
+   Retention löscht, sobald `heute > EVENT_END_DATE + RETENTION_DAYS_AFTER_EVENT`.
+   Die Platzhalterwerte (27.–30.12.2026) und die Hamburg-Koordinaten sind **TODO/unbestätigt**.
+6. **Nutzerenumeration.** Ohne E-Mail-Versand lässt sich „E-Mail schon vergeben“ nicht
+   vollständig verbergen. Entscheidung (Phase 2): `POST /api/auth/register` antwortet
+   immer identisch (202) und loggt **nicht** ein; bei bereits vergebener E-Mail wird nichts
+   angelegt. Login-Fehler sind generisch, Timing wird per Dummy-Hash angeglichen.
+   **Bekannte Grenze:** E-Mail-Adressen werden nicht verifiziert (jemand kann fremde Adressen
+   registrieren); wer sich vertippt, merkt es erst beim Login. Wird im README genannt.
+7. **Backups enthalten personenbezogene Daten.** Rotation (`BACKUP_KEEP_DAYS`, Standard 7)
+   muss kürzer sein als die Retention-Frist; nach einem Restore muss der Cleanup-Job erneut
+   laufen (dokumentiert, Phase 7).
+8. **Logs ohne Personenbezug.** `/api/match?lat=&lon=` trägt Koordinaten im Query-String.
+   Uvicorn-Access-Log ist aus (`--no-access-log`); eigenes Request-Log schreibt nur
+   Methode, Routen-Template, Status, Dauer – keine IP, kein Query. Caddy-Access-Log wird
+   in Phase 7 entsprechend abgeschaltet/gefiltert.
+9. **Rate-Limit.** In-Memory, daher **ein** Uvicorn-Worker (dokumentierte Grenze). Echte
+   Client-IP nur aus `X-Forwarded-For`, wenn der direkte Peer in `TRUSTED_PROXIES` steht.
+10. **Cookie/CSRF.** JWT in HttpOnly-Cookie, `SameSite=Strict`, `Secure` per Env
+    abschaltbar (lokales HTTP). Zusätzlich Origin-Prüfung bei schreibenden Requests.
+11. **CSP.** Der Tile-Host in `img-src` wird aus derselben Env (`TILE_URL`) abgeleitet.
+    Leaflet-Marker-Icons werden lokal gebündelt.
+12. **Datenbank-Tests** laufen gegen echtes PostGIS (Compose-DB lokal, Service-Container in
+    der CI), nicht gemockt – insbesondere die Row-Locks (Phase 5). Datenbank-Constraint
+    verhindert doppelte aktive Anfragen pro (Fahrt, Mitfahrer).
+13. **Routing-Tests.** Matching-Logik gegen einen Fake-`RoutingClient`; wenige echte
+    OSRM-Tests (Marker `osrm`) gegen das Hamburg-Extrakt.
+14. **Make.** macOS liefert GNU Make 3.81 – die Makefiles nutzen keine Make-4-Features.
+15. **Definition of Done „frischer Linux-Host“.** Lokal steht kein frischer Linux-Host zur
+    Verfügung (macOS/arm64). Der Nachweis ist die CI auf `ubuntu-latest` (amd64). Ein Lauf
+    auf einer echten Proxmox-VM bleibt für den Betreiber zu bestätigen und wird als solcher
+    gekennzeichnet.
+16. **Migrationen beim Start.** Der api-Container führt `alembic upgrade head` vor dem
+    Start aus (Einzelinstanz-Betrieb), damit `make up` ohne Extra-Schritt funktioniert.
+17. **Linear.** Das Linear-MCP ist in dieser Umgebung nicht authentifiziert und das Repo hat
+    keinen `## Linear`-Abschnitt; Issues werden daher nicht gepflegt (TODO für den Betreiber).
+
+## Offene Fragen (nicht blockierend)
+
+- Endgültiger Ort und Datum des 40C3 → `EVENT_*` in `.env` setzen.
+- Eigener Tile-Server vs. öffentlicher OSM-Tile-Server (nur Dev laut Tile Usage Policy).
+- Soll Caddy auf der Proxmox-VM selbst TLS terminieren, oder sitzt davor ein Proxy?
+
+## Phasen
+
+- [x] **Phase 1** Repo-Skelett, Compose (db + osrm + api, Health), Migrationen, CI
+- [ ] Phase 2 Auth, Einwilligung, Konto löschen
+- [ ] Phase 3 Fahrten anlegen inkl. OSRM-Route
+- [ ] Phase 4 Matching (Vorfilter + Umweg) inkl. Randfall-Tests
+- [ ] Phase 5 Anfragen/Accept mit Locking, Kontaktfreigabe
+- [ ] Phase 6 Frontend
+- [ ] Phase 7 Retention-Cleanup, Backup, Security-Header, Rate-Limits
+- [ ] Phase 8 E2E-Tests, README, Datenschutzdoku, Aufräumen
+
+Jede Phase: eigener Conventional-Commit, grüne Tests, sofort pushen.
+
+## Was bisher tatsächlich geprüft wurde
+
+Wird pro Phase ergänzt – nur Dinge, die wirklich ausgeführt wurden.
+
+### Phase 1 (lokal: macOS arm64, Docker Desktop, Hamburg-Extrakt)
+
+- `make env DEV=1` → `make osrm-prepare` (≈ 25 s) → `make up`: db, osrm und api werden **healthy**.
+- `GET /api/health/ready` → 200, PostGIS 3.5, Eventziel 20,5 m von der nächsten Straße.
+- Alembic läuft beim API-Start (`Running upgrade -> 0001`); Hoch-/Runter-/Hochmigration getestet.
+- Schema-Garantien per Test gegen echtes PostGIS: GiST-/B-Tree-Indizes, Sitz-Constraints,
+  max. eine aktive Anfrage pro (Fahrt, Mitfahrer), `ON DELETE CASCADE` bei Konto-Löschung.
+- `make test`: **33 Tests grün** (davon 4 Live-Tests gegen echtes OSRM); `make lint` grün (ruff, mypy strict).
+- Gefunden und behandelt: (a) fremder Postgres auf Port 5432 → Port 55432 + Schutzprüfung in den Test-Fixtures;
+  (b) OSRM snappt München im Hamburg-Extrakt still auf eine Straße 592 km entfernt → Snap-Prüfung ist Pflicht.
+
+**Nicht geprüft:** Lauf auf amd64/Proxmox (nur arm64 lokal; Nachweis kommt über die CI auf ubuntu-latest,
+deren erster Lauf nach dem Push zu prüfen ist), `germany-latest` (Ressourcen nur extrapoliert),
+`docker compose` unter Coolify, LXC.

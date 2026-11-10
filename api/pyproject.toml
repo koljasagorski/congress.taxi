@@ -1,0 +1,61 @@
+[project]
+name = "mitfahrer-api"
+version = "0.1.0"
+description = "Mitfahrer-Matching für den 40C3 – Backend"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "geoalchemy2>=0.16",
+    "alembic>=1.14",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "httpx>=0.28",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# Eine Event-Loop für die ganze Session: der lazy DB-Engine ist an eine Loop gebunden.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+markers = [
+    "osrm: benötigt einen laufenden OSRM mit Hamburg-Extrakt (sonst übersprungen)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC", "SIM", "RUF"]
+ignore = [
+    "S101",  # assert ist in Tests ok
+    "RUF001", "RUF002", "RUF003",  # Gedankenstriche/Umlaute in deutschen Texten sind gewollt
+]
+
+[tool.ruff.lint.isort]
+# Das lokale Verzeichnis alembic/ darf das installierte Paket nicht als "first-party" tarnen
+known-third-party = ["alembic"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106", "S603", "S607"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["geoalchemy2", "geoalchemy2.*"]
+ignore_missing_imports = true

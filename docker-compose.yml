@@ -1,0 +1,89 @@
+# Mitfahrer-Matching 40C3 – Compose-Stack (Phase 1: db, osrm, api)
+# Läuft auf einer Proxmox-VM (Docker Engine + Compose v2). Alle Secrets kommen aus .env.
+
+name: ${COMPOSE_PROJECT_NAME:-mitfahrer}
+
+services:
+  db:
+    image: ${POSTGIS_IMAGE:-postgis/postgis:16-3.5}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mitfahrer}
+      POSTGRES_USER: ${POSTGRES_USER:-mitfahrer}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD in .env setzen}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      # nur localhost (Tests, psql); nie öffentlich binden
+      - "127.0.0.1:${DB_PORT:-55432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:${OSRM_VERSION:-v26.4.0}
+    restart: unless-stopped
+    volumes:
+      - ${OSRM_DATA_DIR:-./data/osrm}:/data:ro
+    ports:
+      # nur localhost (Live-Tests, Debugging); OSRM hat keine Authentifizierung
+      - "127.0.0.1:${OSRM_PORT:-55000}:5000"
+    # Ohne vorbereitete Daten klar scheitern statt kryptisch abzustürzen.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ ! -f /data/map.osrm.mldgr ]; then
+          echo "OSRM-Daten fehlen: bitte 'make osrm-prepare' ausführen." >&2
+          sleep 20
+          exit 1
+        fi
+        exec osrm-routed --algorithm mld --ip 0.0.0.0 --port 5000 /data/map.osrm
+    healthcheck:
+      # Das Image hat kein curl und OSRM keinen Health-Endpoint; ein Koordinaten-Request wäre
+      # extrakt-abhängig (HTTP 400 bei NoSegment). Port-Check genügt als "Prozess läuft";
+      # fachliche Prüfung (Ziel im Extrakt?) macht /api/health/ready der API.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 5000"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+
+  # Einmal-Job für osrm-extract/partition/customize – nur über 'make osrm-prepare'
+  osrm-prepare:
+    image: ghcr.io/project-osrm/osrm-backend:${OSRM_VERSION:-v26.4.0}
+    profiles: ["tools"]
+    volumes:
+      - ${OSRM_DATA_DIR:-./data/osrm}:/data
+    entrypoint: ["/bin/sh"]
+
+  api:
+    build:
+      context: ./api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+      OSRM_URL: http://osrm:5000
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # Phase 1/Dev: direkter Zugriff auf localhost; ab Phase 7 nur noch über Caddy
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+volumes:
+  db-data:

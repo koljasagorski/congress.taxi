@@ -1,0 +1,32 @@
+# Secrets & lokale Konfiguration
+.env
+.env.*
+!.env.example
+
+# Daten (OSRM, Backups)
+data/
+backups/
+*.age
+*.sql
+*.sql.gz
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+web/playwright-report/
+web/test-results/
+
+# OS/Editor
+.DS_Store
+.idea/
+.vscode/

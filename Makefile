@@ -4,7 +4,7 @@
 SHELL := /bin/sh
 COMPOSE := docker compose
 
-.PHONY: help env up down restart logs ps build migrate db-up test lint fmt osrm-prepare seed-demo clean-data
+.PHONY: help env fill-secrets up down restart logs ps build migrate db-up test lint fmt osrm-prepare seed-demo clean-data
 
 help: ## Diese Hilfe
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -12,7 +12,8 @@ help: ## Diese Hilfe
 env: ## .env mit Zufalls-Secrets erzeugen (make env DEV=1: Hamburg-Extrakt, Development-Modus)
 	@sh scripts/init-env.sh $(if $(DEV),dev,prod)
 
-up: ## Gesamten Stack starten (baut Images, wartet auf Healthchecks)
+up: ## Gesamten Stack starten (füllt Platzhalter-Secrets, baut Images, wartet auf Healthchecks)
+	@sh scripts/fill-secrets.sh
 	$(COMPOSE) up -d --build --wait
 
 down: ## Stack stoppen (Daten bleiben)
@@ -30,13 +31,16 @@ ps: ## Containerstatus
 build: ## Images bauen
 	$(COMPOSE) build
 
-db-up: ## Nur die Datenbank starten und auf Healthcheck warten
+fill-secrets: ## Platzhalter-Secrets (CHANGE_ME) in .env durch Zufallswerte ersetzen
+	@sh scripts/fill-secrets.sh
+
+db-up: fill-secrets ## Nur die Datenbank starten und auf Healthcheck warten
 	$(COMPOSE) up -d --wait db
 
 migrate: ## Alembic-Migrationen im api-Container ausführen
 	$(COMPOSE) run --rm --no-deps api alembic upgrade head
 
-test: db-up ## Tests (startet die DB; OSRM-Live-Tests laufen, wenn OSRM erreichbar ist; liest .env)
+test: fill-secrets db-up ## Tests (startet die DB; OSRM-Live-Tests laufen, wenn OSRM erreichbar ist; liest .env)
 	cd api && set -a && . ../.env && set +a && POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=$$DB_PORT \
 		OSRM_URL=http://127.0.0.1:$$OSRM_PORT uv run pytest
 

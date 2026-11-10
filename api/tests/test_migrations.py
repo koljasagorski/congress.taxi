@@ -46,6 +46,13 @@ async def test_upgrade_is_idempotent(migrated_database: str) -> None:
     assert result.returncode == 0, result.stderr
 
 
+async def test_models_and_migrations_have_no_drift(migrated_database: str) -> None:
+    """models.py und Migration sind zwei Quellen; `alembic check` deckt Abweichungen auf."""
+    result = run_alembic(migrated_database, "check")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "No new upgrade operations detected" in result.stdout + result.stderr
+
+
 async def test_spatial_and_time_indexes_exist(migrated_database: str) -> None:
     conn = await connect(migrated_database)
     try:

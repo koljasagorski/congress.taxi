@@ -1,0 +1,72 @@
+# ============================================================================
+# Mitfahrer-Matching 40C3 – Konfiguration
+# Kopieren:  cp .env.example .env     (oder:  make env  – erzeugt Zufalls-Secrets)
+# Nichts Geheimes gehört in diese Datei; echte Werte nur in .env (nicht im Git).
+# ============================================================================
+
+# --- Allgemein --------------------------------------------------------------
+COMPOSE_PROJECT_NAME=mitfahrer
+# development | production | test
+# In "production" verweigert die API den Start, solange Secrets noch CHANGE_ME enthalten.
+APP_ENV=development
+
+# --- Event (TODO: Platzhalter! Ort und Datum des 40C3 stehen noch nicht fest) --
+EVENT_NAME=40C3
+# TODO: Platzhalterkoordinaten Hamburg CCH (ungefähr) – durch echte Location ersetzen
+EVENT_LAT=53.5615
+EVENT_LON=9.9885
+# TODO: Platzhalterdaten, unbestätigt. Retention rechnet ab EVENT_END_DATE.
+EVENT_START_DATE=2026-12-27
+EVENT_END_DATE=2026-12-30
+RETENTION_DAYS_AFTER_EVENT=14
+
+# --- Datenbank (PostgreSQL 16 + PostGIS) ------------------------------------
+# Passwort bitte als Hex erzeugen:  openssl rand -hex 24
+POSTGRES_DB=mitfahrer
+POSTGRES_USER=mitfahrer
+POSTGRES_PASSWORD=36d105fbcce04ebd1531258af6af2b3967326361d9da9180
+# postgis/postgis hat NUR amd64-Images (passt für die Proxmox-VM).
+# Auf arm64 (z. B. Apple Silicon) stattdessen:  imresamu/postgis:16-3.5-bookworm
+POSTGIS_IMAGE=imresamu/postgis:16-3.5-bookworm
+# Auf dem Host nur an localhost gebunden (für Tests/psql)
+DB_PORT=5432
+
+# --- Routing (OSRM, Profil car) ---------------------------------------------
+OSRM_VERSION=v26.4.0
+# Geofabrik-Extrakt. Standard: ganz Deutschland (PBF ≈ 4,9 GB; Vorbereitung braucht VIEL RAM,
+# siehe README/PLAN.md). Für Entwicklung/Tests:
+#   OSRM_PBF_URL=https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf
+OSRM_PBF_URL=https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf
+OSRM_DATA_DIR=./data/osrm
+OSRM_TIMEOUT_S=5
+
+# --- Matching ---------------------------------------------------------------
+MATCH_PREFILTER_RADIUS_M=20000
+MATCH_MAX_DETOUR_RATIO=0.20
+MATCH_MAX_DETOUR_MINUTES=25
+# any = ein Kriterium genügt (wörtliche Lesart), all = beide müssen erfüllt sein
+MATCH_DETOUR_MODE=any
+MATCH_MAX_CANDIDATES=30
+MATCH_MAX_SNAP_DISTANCE_M=500
+
+# --- Karte ------------------------------------------------------------------
+# Der öffentliche OSM-Tile-Server ist NUR für Entwicklung gedacht (Tile Usage Policy!).
+TILE_URL=https://tile.openstreetmap.org/{z}/{x}/{y}.png
+GEOCODER=none
+
+# --- Auth (ab Phase 2) -------------------------------------------------------
+# Erzeugen:  openssl rand -hex 32
+JWT_SECRET=e8193e650b1329d33db84457eb1e79eb16f7f9f18658a09d6fe4c6e806a8ed8d
+JWT_TTL_MINUTES=720
+# Für lokales HTTP-Testen auf false stellen; in Produktion true.
+COOKIE_SECURE=false
+# Komma-getrennte Proxy-IPs/CIDRs, denen X-Forwarded-For geglaubt wird
+TRUSTED_PROXIES=
+
+# --- Reverse Proxy (ab Phase 7) ---------------------------------------------
+DOMAIN=localhost
+
+# --- Backup (ab Phase 7) ----------------------------------------------------
+# age-Empfänger (öffentlicher Schlüssel, beginnt mit "age1..."); privater Schlüssel NICHT hier.
+BACKUP_AGE_RECIPIENT=
+BACKUP_KEEP_DAYS=7

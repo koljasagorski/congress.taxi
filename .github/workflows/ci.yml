@@ -46,17 +46,31 @@ jobs:
       - run: uv run pytest -q
 
   # Nachweis „frischer Linux-Host“: env -> OSRM-Vorbereitung (Hamburg) -> Stack -> Tests inkl. OSRM
+  # Zwei Wege: Dev-Env-Generator und der wörtliche DoD-Pfad (cp .env.example .env, Produktionsmodus).
   stack:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        env_mode: [make-env-dev, cp-env-example]
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
           cache-dependency-glob: api/uv.lock
-      - name: Konfiguration erzeugen (Dev-Modus, Hamburg-Extrakt)
+      - name: Konfiguration erzeugen (make env DEV=1)
+        if: matrix.env_mode == 'make-env-dev'
         run: sh scripts/init-env.sh dev
+      - name: Konfiguration per cp .env.example .env (APP_ENV=production, Platzhalter-Secrets)
+        if: matrix.env_mode == 'cp-env-example'
+        # Einzige Abweichung: Hamburg statt germany-latest (4,9 GB, zu groß für den Runner)
+        run: |
+          cp .env.example .env
+          awk '/^OSRM_PBF_URL=/ {print "OSRM_PBF_URL=https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf"; next} {print}' .env > .env.tmp
+          mv .env.tmp .env
+          grep -E '^(APP_ENV|POSTGRES_PASSWORD|JWT_SECRET)=' .env
       - name: Compose-Datei validieren
         run: docker compose config --quiet
       - name: OSRM-Daten vorbereiten

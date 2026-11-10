@@ -1,6 +1,6 @@
 # PLAN – Mitfahrer-Matching für den 40C3
 
-Stand: 2026-11-10 · Status: **Phase 1 abgeschlossen** (CI-Lauf auf Ubuntu steht noch aus)
+Stand: 2026-11-10 · Status: **Phase 1 abgeschlossen** · Deployment auf Proxmox-VM angefragt (siehe unten)
 
 Dieses Dokument hält Phasen, Annahmen, Entscheidungen und offene Punkte fest.
 Alles hier ist bewusst knapp; Details stehen im README (ab Phase 8).
@@ -122,6 +122,21 @@ Wird pro Phase ergänzt – nur Dinge, die wirklich ausgeführt wurden.
 - Gefunden und behandelt: (a) fremder Postgres auf Port 5432 → Port 55432 + Schutzprüfung in den Test-Fixtures;
   (b) OSRM snappt München im Hamburg-Extrakt still auf eine Straße 592 km entfernt → Snap-Prüfung ist Pflicht.
 
-**Nicht geprüft:** Lauf auf amd64/Proxmox (nur arm64 lokal; Nachweis kommt über die CI auf ubuntu-latest,
-deren erster Lauf nach dem Push zu prüfen ist), `germany-latest` (Ressourcen nur extrapoliert),
-`docker compose` unter Coolify, LXC.
+- **CI auf ubuntu-latest (amd64) grün** (Run 42846007900): Lint, mypy, Tests sowie Stack-Lauf
+  `env → osrm-prepare → up → Readiness → Tests` mit dem offiziellen `postgis/postgis`-amd64-Image.
+  Im Log belegt: `MD5 geprüft` für den Hamburg-Download.
+- **Wörtlicher DoD-Pfad** `cp .env.example .env && make osrm-prepare && make up`: Der Produktionsmodus
+  verweigert Platzhalter-Secrets (`CHANGE_ME`) bewusst – das wurde als Fehlermeldung bestätigt. Deshalb füllt
+  `make up`/`make test` Platzhalter automatisch mit Zufallswerten (`scripts/fill-secrets.sh`, idempotent,
+  rührt echte Werte nie an). Die CI testet beide Wege (Matrix `make-env-dev` / `cp-env-example`).
+  Einzige Abweichung in der CI: Hamburg statt `germany-latest` (4,9 GB).
+- `alembic check` ist sauber → als Test aufgenommen (Modelle und Migration dürfen nicht driften). 34 Tests grün.
+
+**Nicht geprüft:** `germany-latest` (Ressourcen nur extrapoliert, s. o.), `docker compose` unter Coolify,
+LXC, Lauf auf der echten Proxmox-VM.
+
+## Deployment auf die Proxmox-VM (angefragt, noch nicht ausgeführt)
+
+Wunsch: auf derselben Proxmox-VM (Hetzner) wie `m.sgr.ski`, unter `congress.sgr.ski`.
+Offen/zu klären vor dem Rollout: SSH-Zugang, vorhandener Reverse Proxy (80/443 belegt?), freie
+RAM/Disk-Reserven (Extrakt: Hamburg vs. Deutschland), DNS-Eintrag. Nichts davon ist bisher geändert worden.

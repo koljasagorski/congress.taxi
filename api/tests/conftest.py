@@ -23,7 +23,10 @@ TEST_DB = f"{_BASE_DB}_test"
 # MUSS vor dem ersten Import von app.* passieren (Settings sind gecacht).
 os.environ["POSTGRES_DB"] = TEST_DB
 os.environ["APP_ENV"] = "test"
-os.environ.setdefault("POSTGRES_HOST", "localhost")
+# Standard bewusst nicht 5432: dort läuft auf Entwicklerrechnern oft ein fremder Postgres.
+# 127.0.0.1 statt localhost, damit nicht ::1 (fremder Server) zuerst probiert wird.
+os.environ.setdefault("POSTGRES_HOST", "127.0.0.1")
+os.environ.setdefault("POSTGRES_PORT", "55432")
 os.environ.setdefault("POSTGRES_USER", "mitfahrer")
 os.environ.setdefault("POSTGRES_PASSWORD", "mitfahrer")
 os.environ.setdefault("JWT_SECRET", "test-secret")

@@ -1,7 +1,7 @@
 # Mitfahrer-Matching 40C3 – Übergabe für Coding-Agenten
 
 Selbst gehostete Mitfahrer-Matching-App (FastAPI + PostGIS + OSRM, später React/Leaflet, Caddy).
-Zielplattform: **Proxmox-VM** (Docker Compose). Entscheidungen/Annahmen: `PLAN.md` (maßgeblich).
+Zielplattform: **Proxmox** (Docker Compose). Teilstand läuft seit 2026-11-10 in LXC 220 auf `hel` (https://congress.sgr.ski), Betrieb/Rückbau/Offenes: `deploy/hel/README.md`. Entscheidungen/Annahmen: `PLAN.md` (maßgeblich).
 
 ## Arbeitsstand
 
@@ -24,6 +24,13 @@ Siehe Phasen-Checkliste in `PLAN.md`. Jede Phase = ein Conventional-Commit, grü
   Hamburg-Extrakt). Jede Koordinate muss gegen `MATCH_MAX_SNAP_DISTANCE_M` geprüft werden.
 - GNU Make 3.81 (macOS): keine Make-4-Features. Kein `sed -i` in Skripten (macOS/Linux verschieden).
 - Logs dürfen keine Koordinaten/IPs enthalten (Uvicorn `--no-access-log`, eigenes Request-Log ohne Query).
+
+## Server (hel) – Kurzfassung
+
+- Nur CI-geprüfte Commits ausrollen (`deploy/hel/README.md`, „Anlegen“); SSH in **wenige gebündelte Sitzungen**;
+  keine Schlüssel, `~/.ssh/config`- oder `.env`-Inhalte ins Repo/in Protokolle. Infos zum Wirt: Repo `patchletter.com`.
+- Der Rand-Caddy (CT 180) reicht im Teilstand nur `/api/health` durch – mit Phase 6/7 den Block öffnen.
+- **Vor Phase 2 live:** PBS-Sicherung von CT 220 entscheiden (siehe README, „Offene Entscheidungen“).
 
 ## Datenschutz-Leitplanken
 

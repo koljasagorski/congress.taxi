@@ -1,6 +1,6 @@
 # PLAN – Mitfahrer-Matching für den 40C3
 
-Stand: 2026-11-10 · Status: **Phase 1 abgeschlossen** · Deployment auf Proxmox-VM angefragt (siehe unten)
+Stand: 2026-11-10 · Status: **Phase 1 abgeschlossen** · Teilstand läuft auf Proxmox (hel, CT 220) unter https://congress.sgr.ski (nur `/api/health`)
 
 Dieses Dokument hält Phasen, Annahmen, Entscheidungen und offene Punkte fest.
 Alles hier ist bewusst knapp; Details stehen im README (ab Phase 8).
@@ -132,11 +132,17 @@ Wird pro Phase ergänzt – nur Dinge, die wirklich ausgeführt wurden.
   Einzige Abweichung in der CI: Hamburg statt `germany-latest` (4,9 GB).
 - `alembic check` ist sauber → als Test aufgenommen (Modelle und Migration dürfen nicht driften). 34 Tests grün.
 
-**Nicht geprüft:** `germany-latest` (Ressourcen nur extrapoliert, s. o.), `docker compose` unter Coolify,
-LXC, Lauf auf der echten Proxmox-VM.
+**Nicht geprüft:** `germany-latest` (Ressourcen nur extrapoliert, s. o.), `docker compose` unter Coolify.
+Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (siehe unten).
 
-## Deployment auf die Proxmox-VM (angefragt, noch nicht ausgeführt)
+## Deployment auf Proxmox (hel) – Teilstand ausgeführt am 2026-11-10
 
-Wunsch: auf derselben Proxmox-VM (Hetzner) wie `m.sgr.ski`, unter `congress.sgr.ski`.
-Offen/zu klären vor dem Rollout: SSH-Zugang, vorhandener Reverse Proxy (80/443 belegt?), freie
-RAM/Disk-Reserven (Extrakt: Hamburg vs. Deutschland), DNS-Eintrag. Nichts davon ist bisher geändert worden.
+Ziel war „dieselbe Proxmox-VM wie `m.sgr.ski`“. Tatsächlich läuft `m.sgr.ski` über den **winzigen Rand-LXC
+CT 180 `sgr`** (1 GB RAM, nur Caddy) auf dem Wirt `hel`, der patchletter-Produktion und den Mailserver trägt und
+RAM-seitig überbucht ist. Der Stack passt nicht in CT 180. Deshalb (mit Zustimmung des Betreibers): **eigener Gast
+CT 220 `congress`** (LXC, 2 Kerne, 4 GB Kappe, 24 GB), `congress.sgr.ski` über einen zusätzlichen Block im Rand-Caddy,
+**Hamburg**-Extrakt. Der Deutschland-Extrakt ist **nicht** ausgeführt (RAM-Spitze der Vorbereitung ≈ 20 GB, ungeprüft;
+nicht auf diesem Wirt).
+
+Alles Weitere – Aufbau, Firewall, Belege, offene Entscheidungen (PBS-Sicherung vor Phase 2!), Rückbau –
+steht in **`deploy/hel/README.md`**.

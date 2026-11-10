@@ -100,8 +100,10 @@ Ablauf wörtlich nach Auftrag: (1) Pickup per `snap_or_error` prüfen · (2) SQL
 `detour_ratio` auf **2 Nachkommastellen** (bei Basisdistanz 0 auf 999 gedeckelt). Filter (`acceptable`) und Sortierung
 im Server rechnen weiter mit den exakten Werten; Einträge mit gleich angezeigtem Umweg können daher in anderer Reihenfolge
 stehen, als die Rundung vermuten lässt. Hilfsfunktionen: `coarse_detour_km/minutes/ratio` in `app/services/matching.py`.
-**Phase 5:** `RequestOut.detour_km`/`detour_minutes` sieht die anfragende Person ebenfalls zu einem selbst gewählten
-Abholpunkt; dort dieselben Hilfsfunktionen verwenden (gleiche Granularität), gespeichert werden weiter exakte Werte.
+**Phase 5 (umgesetzt):** `RequestOut.detour_km`/`detour_minutes` sieht die anfragende Person ebenfalls zu einem selbst
+gewählten Abholpunkt; dort gelten dieselben Hilfsfunktionen und damit dieselbe Granularität (`detour_km` in
+0,5-km-Schritten, `detour_minutes` ganzzahlig, auch in Listen sowie accept/decline/cancel), gespeichert werden weiter
+exakte Werte. `422 detour_too_large` ist dieselbe Ja/Nein-Information wie der Filter `acceptable` von `/api/match`.
 **Frontend (Phase 6):** `detour_minutes` ist jetzt ganzzahlig, `detour_km` ein Vielfaches von 0,5 – Anzeige entsprechend
 („≈ 1,5 km“, „≈ 4 min“), keine Nachkommastellen für Minuten.
 
@@ -116,7 +118,7 @@ außerhalb von `APP_ENV=production` registrierbar) und Fahrten an; verweigert Pr
 
 ## Anfragen (Phase 5) – Anmeldung erforderlich
 
-**RequestOut**: `{id, ride_id, status, pickup{lat,lon}, detour_km, detour_minutes, created_at, decided_at, ride{departure_time, seats_available, driver_display_name}, rider{display_name}, counterpart_email}`
+**RequestOut**: `{id, ride_id, status, pickup{lat,lon}, detour_km (Vielfaches von 0,5), detour_minutes (Integer, ganze Minuten), created_at, decided_at, ride{departure_time, seats_available, driver_display_name}, rider{display_name}, counterpart_email}`
 (`status` ∈ `pending|accepted|declined|cancelled`). **`counterpart_email` ist nur gesetzt, wenn `status == accepted` und die
 anfragende Person Teil der Anfrage ist** (Mitfahrer sieht die E-Mail des Fahrers, Fahrer die des Mitfahrers); sonst `null`.
 Nie in Match-Antworten, nie bei `pending`/`declined`/`cancelled`.
@@ -131,6 +133,12 @@ Nie in Match-Antworten, nie bei `pending`/`declined`/`cancelled`.
 | `POST /api/requests/{id}/cancel` | – | 200 RequestOut (`cancelled`) – Mitfahrer: `pending` oder `accepted`; Fahrer: nur `accepted`; bei `accepted` Platz zurück (`+1`, `full` → `open`) | 404 · 409 `invalid_state` |
 
 Sperr-Reihenfolge immer: **Fahrt (`rides`) vor Anfrage (`ride_requests`)**, um Deadlocks zu vermeiden.
+**Konto löschen (`DELETE /api/me`):** Es gibt genau **eine** Implementierung der Platzrückgabe,
+`release_seats_of_rider` in `app/services/requests.py` (von `app/api/me.py` in derselben Transaktion vor dem Löschen
+aufgerufen). Sie sperrt zuerst alle Fahrten des Nutzers (als Fahrer oder mit irgendeiner Anfrage, id-sortiert in einer
+Anweisung), setzt *danach* seine `accepted`-Anfragen auf `cancelled` (`RETURNING`) und schreibt je Fahrt einmal gut
+(`LEAST(seats_total, …)`, `full` → `open`, abgesagte Fahrten unverändert). Dadurch weder Doppel- noch Fehlgutschrift
+gegen parallele accept/cancel; das anschließende CASCADE-Löschen entfernt alle Anfragen/Fahrten des Kontos.
 `decided_at` wird bei accept/decline/cancel gesetzt. Dieselbe Transition erneut → 409 `invalid_state`.
 
 ## Gesundheit (fertig)

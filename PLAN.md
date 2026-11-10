@@ -75,8 +75,11 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
    (Version 2.3 der Bibliothek kennt keinen Schalter dafür).
    **Konto löschen und Plätze:** `DELETE /api/me` sperrt zuerst die Fahrten (id-sortiert), löscht
    danach die Anfragen mit `DELETE … RETURNING` und schreibt nur tatsächlich gelöschte
-   `accepted`-Anfragen gut (`release_seats_of_rider` in `app/api/me.py`). Phase 5 darf diese
-   Funktion durch ihren eigenen Mechanismus ersetzen.
+   `accepted`-Anfragen gut. **Seit Phase 5 gibt es genau eine Implementierung:**
+   `release_seats_of_rider` in `app/services/requests.py` (sperrt Fahrten des Nutzers als Fahrer
+   *und* mit Anfragen id-sortiert, setzt danach `accepted` → `cancelled`, schreibt je Fahrt einmal
+   gut); `app/api/me.py` ruft sie in derselben Transaktion auf. Tests: `test_requests_account.py`,
+   `test_me_account.py` (Konto-Löschen vs. accept/cancel, mehrere Wiederholungen).
 7. **Backups enthalten personenbezogene Daten.** Rotation (`BACKUP_KEEP_DAYS`, Standard 7)
    muss kürzer sein als die Retention-Frist; nach einem Restore muss der Cleanup-Job erneut
    laufen (dokumentiert, Phase 7).
@@ -112,6 +115,10 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
     (`detour_km` in 0,5-km-Schritten, `detour_minutes` ganzzahlig, `detour_ratio` 2 Stellen; Filter und Sortierung
     intern exakt), (c) Rate-Limit `RATE_LIMIT_MATCH_PER_MIN` (Phase 7). Verbleibende Grenze bewusst hingenommen
     (kurzlebige Event-App); README/Datenschutzdoku nennen sie in Phase 8.
+    **Phase 5:** `RequestOut.detour_km`/`detour_minutes` (Anlegen, Listen, accept/decline/cancel) nutzen dieselben
+    `coarse_detour_*`-Funktionen wie `/api/match`; `422 detour_too_large` entspricht dem Filter `acceptable`. Ein
+    eigener Abholpunkt liefert damit keine genauere Umweg-Information als die Suche. Zusätzlich fehlt noch das enge
+    Rate-Limit für `POST /api/rides/{id}/requests` (Phase 7).
 
 ## Offene Fragen (nicht blockierend)
 
@@ -125,7 +132,7 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
 - [x] **Phase 2** Auth, Einwilligung, Konto löschen
 - [x] **Phase 3** Fahrten anlegen/listen/ändern/stornieren inkl. OSRM-Route und Snap-Prüfung
 - [x] **Phase 4** Matching (Vorfilter + Umweg) inkl. Randfall-Tests, Demo-Daten (`make seed-demo`)
-- [ ] Phase 5 Anfragen/Accept mit Locking, Kontaktfreigabe
+- [x] **Phase 5** Anfragen/Accept mit Locking, Kontaktfreigabe (E-Mail erst bei `accepted`, nur Beteiligte; grobe Umweg-Werte)
 - [ ] Phase 6 Frontend
 - [ ] Phase 7 Retention-Cleanup, Backup, Security-Header, Rate-Limits
 - [ ] Phase 8 E2E-Tests, README, Datenschutzdoku, Aufräumen

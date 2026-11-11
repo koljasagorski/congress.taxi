@@ -154,6 +154,16 @@ async def test_cache_hits_do_not_call_upstream_and_ignore_case_and_spacing() -> 
     await client.aclose()
 
 
+async def test_cache_is_not_shared_between_users() -> None:
+    seen: list[httpx.Request] = []
+    client = make_client(seen=seen)
+    await client.search("Gleiche Adresse 1", scope="nutzer-a")
+    await client.search("Gleiche Adresse 1", scope="nutzer-b")  # fremder Cache darf nicht greifen
+    await client.search("Gleiche Adresse 1", scope="nutzer-a")  # eigener Cache greift
+    assert len(seen) == 2
+    await client.aclose()
+
+
 async def test_cache_expires() -> None:
     clock = Clock()
     seen: list[httpx.Request] = []

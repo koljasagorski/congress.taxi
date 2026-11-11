@@ -32,9 +32,11 @@ class FakeGeocoder(Geocoder):
         self.hits = hits if hits is not None else default
         self.error = error
         self.queries: list[str] = []
+        self.scopes: list[str] = []
 
-    async def search(self, query: str) -> list[GeocodeHit]:
+    async def search(self, query: str, *, scope: str = "") -> list[GeocodeHit]:
         self.queries.append(query)
+        self.scopes.append(scope)
         if self.error is not None:
             raise self.error
         return self.hits
@@ -63,6 +65,17 @@ async def test_returns_items(client: httpx.AsyncClient, db: Any) -> None:
     assert r.status_code == 200
     assert r.json() == {"items": [{"label": "Geheimweg 17, Hamburg", "lat": 53.55, "lon": 9.99}]}
     assert fake.queries == [SECRET_QUERY]  # getrimmt
+
+
+async def test_search_is_scoped_to_the_user(client: httpx.AsyncClient, db: Any) -> None:
+    fake = FakeGeocoder()
+    use(fake)
+    first = await create_user(db)
+    second = await create_user(db)
+    for u in (first, second):
+        login(client, u)
+        await client.get("/api/geocode", params={"q": SECRET_QUERY})
+    assert fake.scopes == [str(first["id"]), str(second["id"])]
 
 
 async def test_empty_result_is_200_with_empty_list(client: httpx.AsyncClient, db: Any) -> None:

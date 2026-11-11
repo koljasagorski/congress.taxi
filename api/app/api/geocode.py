@@ -53,7 +53,7 @@ async def geocode(
     if len(query) < 3:
         raise ApiError(422, "validation_error", "Suchtext zu kurz")
     try:
-        hits = await geocoder.search(query)
+        hits = await geocoder.search(query, scope=str(user.id))
     except GeocoderBusyError:
         raise ApiError(
             503,

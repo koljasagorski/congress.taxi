@@ -4,8 +4,9 @@ Datenschutz: Der Browser fragt nur die eigene API (``GET /api/geocode``). Der Ge
 deshalb nur die Server-Adresse, nie die der Nutzer, und bekommt weder Cookies noch Referer.
 Der Suchtext (eine Adresse!) wird nicht gespeichert und nicht protokolliert: weder im
 Anfrage-Log (nur das Routen-Template) noch im httpx-Log (auf WARNING gestellt, siehe
-``app.middleware.security``). Der Zwischenspeicher liegt nur im Arbeitsspeicher, ist kurz und
-unter dem Hash des Suchtexts abgelegt (kein Klartext-Schlüssel).
+``app.middleware.security``). Der Zwischenspeicher liegt nur im Arbeitsspeicher, ist kurz, gilt
+je Nutzer (sonst verriete ein schneller Treffer, was andere gesucht haben) und ist unter einem
+Hash abgelegt (kein Klartext-Schlüssel).
 
 Nutzungsregeln des öffentlichen Nominatim-Dienstes, die hier eingehalten werden: höchstens eine
 Anfrage pro Sekunde (``_reserve_slot``), eine erkennbare Anwendungskennung als User-Agent,
@@ -57,7 +58,9 @@ class GeocodeHit:
 class Geocoder:
     """Schnittstelle; Tests ersetzen sie über ``app.dependency_overrides[get_geocoder]``."""
 
-    async def search(self, query: str) -> list[GeocodeHit]:  # pragma: no cover - Schnittstelle
+    async def search(  # pragma: no cover - Schnittstelle
+        self, query: str, *, scope: str = ""
+    ) -> list[GeocodeHit]:
         raise NotImplementedError
 
     async def aclose(self) -> None:  # pragma: no cover - Schnittstelle
@@ -121,8 +124,11 @@ class NominatimClient(Geocoder):
     # --- Zwischenspeicher ---------------------------------------------------------------------
 
     @staticmethod
-    def _cache_key(query: str) -> str:
-        return hashlib.sha256(_normalize(query).encode()).hexdigest()
+    def _cache_key(query: str, scope: str) -> str:
+        # Der Schlüssel enthält den Nutzer (``scope``): Treffer gibt es nur für dieselbe Person.
+        # Ein gemeinsamer Cache würde verraten (schneller Treffer statt Drossel-Wartezeit), dass
+        # jemand anderes diese Adresse kürzlich gesucht hat.
+        return hashlib.sha256(f"{scope}\0{_normalize(query)}".encode()).hexdigest()
 
     def _cache_get(self, key: str) -> list[GeocodeHit] | None:
         entry = self._cache.get(key)
@@ -159,8 +165,8 @@ class NominatimClient(Geocoder):
 
     # --- Suche --------------------------------------------------------------------------------
 
-    async def search(self, query: str) -> list[GeocodeHit]:
-        key = self._cache_key(query)
+    async def search(self, query: str, *, scope: str = "") -> list[GeocodeHit]:
+        key = self._cache_key(query, scope)
         cached = self._cache_get(key)
         if cached is not None:
             return list(cached)

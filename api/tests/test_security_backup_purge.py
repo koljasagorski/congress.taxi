@@ -125,6 +125,31 @@ def test_purge_rejects_garbage_dates(tmp_path: Path) -> None:
     assert "EVENT_END_DATE" in r.stderr
 
 
+def test_purge_refuses_end_date_before_start_date(tmp_path: Path) -> None:
+    """OPS-4: Tippfehler im Enddatum (Ende vor Beginn) darf keine Backups löschen."""
+    files = seed(tmp_path)
+    for args in (("--purge-expired",), ()):
+        r = run(
+            tmp_path, *args,
+            EVENT_START_DATE="2030-01-01", EVENT_END_DATE="2020-01-01",
+            RETENTION_DAYS_AFTER_EVENT="14",
+        )  # fmt: skip
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert "EVENT_END_DATE" in r.stderr and "EVENT_START_DATE" in r.stderr
+        assert all(f.exists() for f in files)
+
+
+def test_purge_accepts_end_date_equal_or_after_start_date(tmp_path: Path) -> None:
+    files = seed(tmp_path)
+    r = run(
+        tmp_path, "--purge-expired",
+        EVENT_START_DATE="2020-01-01", EVENT_END_DATE="2020-01-01",
+        RETENTION_DAYS_AFTER_EVENT="14",
+    )  # fmt: skip
+    assert r.returncode == 0, r.stderr
+    assert not any(f.exists() for f in files)
+
+
 def test_backup_after_the_deadline_purges_and_creates_nothing(tmp_path: Path) -> None:
     files = seed(tmp_path)
     r = run(

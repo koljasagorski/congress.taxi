@@ -53,6 +53,13 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
    `all` (beide müssen erfüllt sein). Werte per Env.
 5. **Event-Datum.** Die Spezifikation nennt keines. Neu: `EVENT_START_DATE`, `EVENT_END_DATE`.
    Retention löscht, sobald `heute > EVENT_END_DATE + RETENTION_DAYS_AFTER_EVENT`.
+   **Plausibilisierung (OPS-4):** `EVENT_END_DATE < EVENT_START_DATE` lehnt `Settings` ab (die Daten sind
+   TODO-Platzhalter, die der Betreiber von Hand ändert; ein Tippfehler würde die Frist in die Vergangenheit legen).
+   Zusätzlich verweigert der Cleanup (Exit-Code 3, nichts gelöscht), wenn bei abgelaufener Frist Datensätze existieren,
+   die mehr als 1 Tag nach Fristablauf angelegt wurden; bewusst löschen mit `CLEANUP_CONFIRM_EXPIRED=1` bzw.
+   `--confirm-expired`. Entscheidung: Die API sperrt sich nach der Frist **nicht** selbst; der Stack ist nach Fristablauf
+   zu stoppen (README, „Eventdaten, Löschfrist und Betrieb nach der Frist“). `scripts/backup.sh` bricht bei
+   Ende vor Beginn ab, statt Backups zu löschen.
    Die Platzhalterwerte (27.–30.12.2026) und die Hamburg-Koordinaten sind **TODO/unbestätigt**.
 6. **Nutzerenumeration.** Ohne E-Mail-Versand lässt sich „E-Mail schon vergeben“ nicht
    vollständig verbergen. Entscheidung (Phase 2): `POST /api/auth/register` antwortet

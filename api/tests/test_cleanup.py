@@ -24,6 +24,8 @@ from tests.helpers import create_user, insert_ride
 SETTINGS = Settings(event_end_date=date(2027, 1, 1), retention_days_after_event=14)
 # Stichtag 2027-01-15 -> Frist endet mit Ablauf dieses Tages (UTC)
 EXPIRES = datetime(2027, 1, 16, 0, 0, 0, tzinfo=UTC)
+#: Anlegezeit der Testdaten: lange vor Fristablauf (plausible Daten)
+CREATED = datetime(2026, 12, 28, 12, 0, 0, tzinfo=UTC)
 
 # --- Fristgrenze (rein, ohne DB) ----------------------------------------------------------------
 
@@ -86,6 +88,9 @@ async def _seed(db: Any, users: int = 3) -> dict[str, int]:
             rider["id"],
         )
         requests += 1
+    # Anlegezeit fest vor der Frist (EXPIRES), unabhängig von der echten Uhr der Testläufe
+    for table in ("users", "rides", "ride_requests"):
+        await db.execute(f"UPDATE {table} SET created_at = $1", CREATED)  # noqa: S608
     return {"users": users, "rides": 2, "ride_requests": requests}
 
 
@@ -254,3 +259,107 @@ async def test_cli_database_error_exits_1_with_type_only() -> None:
     assert proc.stderr.strip().startswith("cleanup: Fehler (")
     assert "supergeheimes-passwort" not in proc.stdout + proc.stderr
     assert "Traceback" not in proc.stderr
+
+
+# --- OPS-4: Schutz vor falschem EVENT_END_DATE (Daten NACH Fristablauf) --------------------------
+
+
+async def _insert_user_created_at(db: Any, created_at: datetime) -> None:
+    user = await create_user(db)
+    await db.execute("UPDATE users SET created_at = $1 WHERE id = $2", created_at, user["id"])
+
+
+async def test_data_created_long_after_the_deadline_blocks_deletion(db: Any) -> None:
+    """Typo im EVENT_END_DATE: Die Frist liegt in der Vergangenheit, echte Konten sind jünger.
+    Der Cleanup darf dann nichts löschen, sondern muss verweigern."""
+    seeded = await _seed(db)
+    await _insert_user_created_at(db, EXPIRES + timedelta(days=30))
+    result = await run_cleanup(settings=SETTINGS, now=EXPIRES + timedelta(days=60))
+    assert result.due and result.blocked
+    assert result.late_rows == 1
+    assert sum(result.counts.values()) == 0
+    after = await _counts(db)
+    assert after == {**seeded, "users": seeded["users"] + 1}
+    text = result.summary(SETTINGS)
+    assert "verweigert" in text and "CLEANUP_CONFIRM_EXPIRED" in text
+    assert "geheim" not in text and "example.org" not in text
+
+
+async def test_block_applies_to_dry_run_too(db: Any) -> None:
+    await _insert_user_created_at(db, EXPIRES + timedelta(days=30))
+    result = await run_cleanup(settings=SETTINGS, now=EXPIRES + timedelta(days=60), dry_run=True)
+    assert result.blocked and result.late_rows == 1
+
+
+async def test_grace_period_tolerates_data_created_right_after_the_deadline(db: Any) -> None:
+    """Zwischen Fristablauf und dem nächsten Cleanup-Lauf (alle 6 h) dürfen Konten entstehen."""
+    seeded = await _seed(db)
+    await _insert_user_created_at(db, EXPIRES + timedelta(hours=12))
+    result = await run_cleanup(settings=SETTINGS, now=EXPIRES + timedelta(hours=13))
+    assert result.due and not result.blocked
+    assert result.counts == {**seeded, "users": seeded["users"] + 1}
+    assert await _counts(db) == {"users": 0, "rides": 0, "ride_requests": 0}
+
+
+async def test_late_rides_and_requests_also_block(db: Any) -> None:
+    await _seed(db)
+    await db.execute(
+        "UPDATE rides SET created_at = $1 WHERE id = (SELECT id FROM rides LIMIT 1)",
+        EXPIRES + timedelta(days=5),
+    )
+    result = await run_cleanup(settings=SETTINGS, now=EXPIRES + timedelta(days=6))
+    assert result.blocked and result.late_rows == 1
+    assert await db.fetchval("SELECT count(*) FROM rides") == 2
+
+
+async def test_confirm_expired_deletes_despite_late_data(db: Any) -> None:
+    seeded = await _seed(db)
+    await _insert_user_created_at(db, EXPIRES + timedelta(days=30))
+    result = await run_cleanup(
+        settings=SETTINGS, now=EXPIRES + timedelta(days=60), confirm_expired=True
+    )
+    assert result.due and not result.blocked
+    assert result.counts == {**seeded, "users": seeded["users"] + 1}
+    assert await _counts(db) == {"users": 0, "rides": 0, "ride_requests": 0}
+
+
+async def test_settings_flag_confirms_expired(db: Any) -> None:
+    await _insert_user_created_at(db, EXPIRES + timedelta(days=30))
+    confirmed = Settings(
+        event_end_date=date(2027, 1, 1),
+        retention_days_after_event=14,
+        cleanup_confirm_expired=True,
+    )
+    result = await run_cleanup(settings=confirmed, now=EXPIRES + timedelta(days=60))
+    assert not result.blocked and result.counts["users"] == 1
+
+
+async def test_cli_blocked_exits_3_and_keeps_data(db: Any) -> None:
+    await _insert_user_created_at(db, EXPIRES + timedelta(days=30))
+    proc = await asyncio.to_thread(_cli, "--now", "2027-03-30T00:00:00Z")
+    assert proc.returncode == 3, proc.stdout + proc.stderr
+    assert "verweigert" in proc.stderr
+    assert "CLEANUP_CONFIRM_EXPIRED" in proc.stderr and "--confirm-expired" in proc.stderr
+    assert await db.fetchval("SELECT count(*) FROM users") == 1
+
+
+async def test_cli_confirm_flag_and_env_delete(db: Any) -> None:
+    await _insert_user_created_at(db, EXPIRES + timedelta(days=30))
+    via_flag = await asyncio.to_thread(_cli, "--now", "2027-03-30T00:00:00Z", "--confirm-expired")
+    assert via_flag.returncode == 0, via_flag.stdout + via_flag.stderr
+    assert await db.fetchval("SELECT count(*) FROM users") == 0
+    await _insert_user_created_at(db, EXPIRES + timedelta(days=30))
+    via_env = await asyncio.to_thread(
+        _cli, "--now", "2027-03-30T00:00:00Z", CLEANUP_CONFIRM_EXPIRED="1"
+    )
+    assert via_env.returncode == 0, via_env.stdout + via_env.stderr
+    assert await db.fetchval("SELECT count(*) FROM users") == 0
+
+
+async def test_cli_wrong_end_date_before_start_exits_1_with_clear_message() -> None:
+    proc = await asyncio.to_thread(
+        _cli, "--now", "2027-01-16T00:00:00Z", EVENT_START_DATE="2030-01-01"
+    )
+    assert proc.returncode == 1
+    assert "Fehler" in proc.stderr and "Traceback" not in proc.stderr
+    assert "EVENT_END_DATE" in proc.stderr and "2030-01-01" in proc.stderr

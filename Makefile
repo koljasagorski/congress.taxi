@@ -85,7 +85,7 @@ purge-backups: ## Alle Backups löschen, sobald die Aufbewahrungsfrist abgelaufe
 restore: ## Backup einspielen: make restore IDENTITY=key.txt FILE=backups/x.dump.age TARGET_DB=name [RESTORE_ARGS=--replace]
 	@bash scripts/restore.sh --identity "$(IDENTITY)" --file "$(FILE)" --target-db "$(TARGET_DB)" $(RESTORE_ARGS)
 
-cleanup: ## Retention-Cleanup einmal ausführen (DRY=1: nur zählen; CLEANUP_ARGS="--now 2027-02-01T00:00:00Z")
+cleanup: ## Retention-Cleanup einmal ausführen (DRY=1: nur zählen; CLEANUP_ARGS="--now 2027-02-01T00:00:00Z" oder "--confirm-expired")
 	$(COMPOSE) run --rm --no-deps --entrypoint python cleanup -m app.cleanup $(if $(DRY),--dry-run,) $(CLEANUP_ARGS)
 
 # --- Frontend (Phase 6) ---

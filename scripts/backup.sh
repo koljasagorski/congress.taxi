@@ -42,6 +42,7 @@
 #   BACKUP_DB_EXEC         Befehl, der in den Datenbank-Container führt (stdin durchreichen!).
 #                          Standard: "docker compose exec -T db". Tests: "docker exec -i <name>".
 #   EVENT_END_DATE         YYYY-MM-DD, Ende des Events (für die Löschfrist; wie bei app.cleanup)
+#   EVENT_START_DATE       optional, YYYY-MM-DD; liegt EVENT_END_DATE davor, bricht das Skript ab (OPS-4)
 #   ENV_FILE               Standard ./.env
 #   BACKUP_NOW_EPOCH       nur für Tests: aktuelle Zeit (Sekunden seit 1970, UTC) ersetzen
 #
@@ -101,6 +102,7 @@ EVENT_END_DATE="$(cfg EVENT_END_DATE)"
 RECIPIENT="$(cfg BACKUP_AGE_RECIPIENT)"
 BACKUP_DIR="$(cfg BACKUP_DIR ./backups)"
 KEEP_DAYS="$(cfg BACKUP_KEEP_DAYS 7)"
+EVENT_START_DATE="$(cfg EVENT_START_DATE)"
 RETENTION_DAYS="$(cfg RETENTION_DAYS_AFTER_EVENT 14)"
 DB_EXEC="$(cfg BACKUP_DB_EXEC 'docker compose exec -T db')"
 
@@ -116,6 +118,15 @@ expiry_epoch() {
     [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
     *) die "EVENT_END_DATE muss das Format YYYY-MM-DD haben." ;;
   esac
+  # Plausibilität (wie Settings in der API): Ein Tippfehler im Enddatum würde sonst alle Backups
+  # unwiederbringlich löschen. Gleiches Format => der String-Vergleich entspricht dem Datumsvergleich.
+  case "$EVENT_START_DATE" in
+    '' | [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+    *) die "EVENT_START_DATE muss das Format YYYY-MM-DD haben." ;;
+  esac
+  if [ -n "$EVENT_START_DATE" ] && [[ "$EVENT_END_DATE" < "$EVENT_START_DATE" ]]; then
+    die "EVENT_END_DATE ($EVENT_END_DATE) liegt vor EVENT_START_DATE ($EVENT_START_DATE) – nichts gelöscht, bitte Daten in .env prüfen."
+  fi
   awk -v d="$EVENT_END_DATE" -v n="$RETENTION_DAYS" 'BEGIN {
     split(d, a, "-"); y = a[1] + 0; m = a[2] + 0; dd = a[3] + 0
     if (m < 1 || m > 12 || dd < 1 || dd > 31) exit 1

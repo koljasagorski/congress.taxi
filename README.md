@@ -53,6 +53,23 @@ Dabei veröffentlicht nur Caddy Ports (80/443, per `HTTP_PORT`/`HTTPS_PORT` änd
 Produktion: `make env` (ohne `DEV=1`), `OSRM_PBF_URL` bleibt `germany-latest` – vorher die
 Ressourcenhinweise in `PLAN.md` lesen.
 
+## Eventdaten, Löschfrist und Betrieb nach der Frist
+
+`EVENT_START_DATE`, `EVENT_END_DATE` und `RETENTION_DAYS_AFTER_EVENT` (in `.env`) bestimmen, wann der
+Cleanup-Dienst **alle** Konten, Fahrten und Anfragen löscht: am Ende des Tages
+`EVENT_END_DATE + RETENTION_DAYS_AFTER_EVENT` (UTC). Der Dienst läuft immer mit (beim Start, dann alle 6 h).
+
+- **Plausibilisierung.** `EVENT_END_DATE` vor `EVENT_START_DATE` lehnt die Konfiguration ab (API und Cleanup starten
+  nicht, `scripts/backup.sh` bricht ab, ohne Backups zu löschen).
+- **Schutz vor falschem Datum.** Findet der Cleanup bei abgelaufener Frist Datensätze, die mehr als 1 Tag *nach*
+  Fristablauf angelegt wurden (typisch: Tippfehler wie 2025 statt 2026, Frist nachträglich vorverlegt), löscht er
+  **nichts**, meldet es auf stderr und beendet sich mit Exit-Code 3 (der Container wird `unhealthy`).
+  Datum in `.env` korrigieren; wirklich löschen mit `CLEANUP_CONFIRM_EXPIRED=1` (oder einmalig
+  `make cleanup CLEANUP_ARGS=--confirm-expired`). Vorher `make cleanup DRY=1`.
+- **Nach Fristablauf den Stack stoppen** (`make down` bzw. `make down-proxy`; auf hel `pct stop 220`). Die API bleibt
+  bis dahin vollständig offen (Registrierung, Fahrten): Konten, die erst nach der Frist entstehen, löscht der
+  nächste Cleanup-Lauf (bis zu 6 h später) ohne Rückfrage – oder verweigert ihn, siehe oben.
+
 ## Stand Phase 1
 
 - PostgreSQL 16 + PostGIS, Alembic-Migration mit dem vollständigen Schema

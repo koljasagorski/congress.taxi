@@ -126,6 +126,16 @@ Angelegt über den Cloudflare-MCP am 2026-11-10.
 2. **Wächter.** `hel-wache` überwacht nur eigene Gäste (`MUSS_LAUFEN`); CT 220 ist dort **nicht** eingetragen.
 3. **Deutschland-Extrakt** und danach mehr RAM/Platte (`pct set 220 --memory …`, `pct resize 220 rootfs +…G`).
 
+## Nach Fristablauf (Event vorbei)
+
+Der Cleanup in CT 220 löscht alle Nutzerdaten am Ende des Tages `EVENT_END_DATE + RETENTION_DAYS_AFTER_EVENT`
+(UTC). Die API bleibt danach **offen**: Neue Konten würden vom nächsten Lauf (bis 6 h später) ohne Rückfrage entfernt.
+Deshalb nach Fristablauf den Gast stoppen (`ssh hel 'pct stop 220'`) und mit dem Rückbau unten fortfahren.
+Vor jeder Änderung von `EVENT_END_DATE`/`RETENTION_DAYS_AFTER_EVENT` auf hel `make cleanup DRY=1` bzw.
+`python -m app.cleanup --dry-run` im Gast laufen lassen. Bei falschem Datum (Daten, die >1 Tag nach Fristablauf
+entstanden) verweigert der Cleanup (Exit-Code 3, Container `unhealthy`), statt zu löschen; `CLEANUP_CONFIRM_EXPIRED=1`
+erzwingt das Löschen bewusst.
+
 ## Rückbau (vollständig, in dieser Reihenfolge)
 
 1. DNS: A- und AAAA-Eintrag `congress` bei Cloudflare löschen.

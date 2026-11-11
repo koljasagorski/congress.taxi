@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     event_start_date: date = date(2026, 12, 27)
     event_end_date: date = date(2026, 12, 30)
     retention_days_after_event: int = Field(default=14, ge=0)
+    #: Schutz vor falschem EVENT_END_DATE: Hat der Cleanup Daten gefunden, die erst deutlich NACH
+    #: dem Fristablauf angelegt wurden, verweigert er das Löschen (siehe ``app.cleanup``). Mit
+    #: ``CLEANUP_CONFIRM_EXPIRED=1`` bestätigt der Betreiber das Löschen ausdrücklich.
+    cleanup_confirm_expired: bool = False
 
     # Matching
     match_prefilter_radius_m: int = Field(default=20_000, gt=0)
@@ -125,6 +129,17 @@ class Settings(BaseSettings):
             return explicit
         scheme = "https" if self.cookie_secure else "http"
         return [f"{scheme}://{self.domain}"]
+
+    @model_validator(mode="after")
+    def _event_dates_are_plausible(self) -> Self:
+        # Ein Tippfehler im Enddatum (z. B. 2025 statt 2026) verschöbe die Löschfrist in die
+        # Vergangenheit; der Cleanup-Dienst liefe dann beim nächsten Start los.
+        if self.event_end_date < self.event_start_date:
+            raise ValueError(
+                f"EVENT_END_DATE ({self.event_end_date}) liegt vor EVENT_START_DATE "
+                f"({self.event_start_date}) – bitte beide Daten in .env prüfen."
+            )
+        return self
 
     @model_validator(mode="after")
     def _reject_placeholder_secrets_in_production(self) -> Self:

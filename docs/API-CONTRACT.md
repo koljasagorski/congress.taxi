@@ -205,6 +205,10 @@ mit `404` (der Pfad belegt eine DB-Verbindung, ruft OSRM auf und nennt die PostG
   von `cdn.jsdelivr.net`, das widerspricht „keine externen CDNs“); in Produktion `404 not_found`.
 * Retention-Cleanup: `python -m app.cleanup [--dry-run] [--now ISO]`; löscht **alles** (Anfragen, Fahrten, Konten), sobald
   `jetzt > EVENT_END_DATE + RETENTION_DAYS_AFTER_EVENT` (Tagesende UTC); idempotent; Ausgabe nur Zählwerte.
+  `Settings` lehnt `EVENT_END_DATE < EVENT_START_DATE` ab. Gibt es bei abgelaufener Frist Datensätze mit `created_at` später
+  als 1 Tag nach Fristablauf, löscht der Cleanup **nichts** (Exit-Code 3, Meldung auf stderr, nur Zählwerte); bestätigen mit
+  `CLEANUP_CONFIRM_EXPIRED=1` oder `--confirm-expired`. Exit-Codes: 0 ok, 1 Laufzeit-/Konfigurationsfehler, 2 Aufrufparameter, 3 verweigert.
+  Die API selbst bleibt nach Fristablauf offen; der Stack ist dann zu stoppen.
 * Backups: `pg_dump` → `age -r $BACKUP_AGE_RECIPIENT`; Aufbewahrung `BACKUP_KEEP_DAYS` **kleiner** als die Retention.
 * Logs: kein Query-String, keine IP, keine E-Mail, keine Koordinaten – in allen Containern: `osrm-routed` läuft mit `-l WARNING` (im Standard INFO würde jede Anfrage mit Koordinaten in der URL protokolliert); Caddy hat kein Access-Log, filtert sein Betriebslog und unterdrückt per `handle_errors` die ERROR-Einträge (`http.log.error`) mit IP, Header und Query-String – auch im Rand-Caddy (`deploy/hel/`).
 

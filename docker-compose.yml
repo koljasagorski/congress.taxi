@@ -184,7 +184,8 @@ services:
       start_period: 20s
 
   # Retention-Cleanup: löscht alle Daten nach EVENT_END_DATE + RETENTION_DAYS_AFTER_EVENT
-  # (Tagesende UTC), alle 6 Stunden. Gleiches Image und gleiche Konfiguration wie die API,
+  # (Tagesende UTC), alle 6 Stunden. Verweigert (Exit 3, Container unhealthy), wenn Daten später als
+  # 1 Tag nach Fristablauf entstanden sind (falsches Datum); CLEANUP_CONFIRM_EXPIRED=1 bestätigt. Gleiches Image und gleiche Konfiguration wie die API,
   # kein Port. Einmalig/manuell: make cleanup  (DRY=1 zählt nur). Logs sparsam: eine Zeile pro Lauf.
   cleanup:
     build:

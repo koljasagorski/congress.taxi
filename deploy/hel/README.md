@@ -22,7 +22,7 @@ Internet ─▶ sgr (CT 180) 65.21.92.102 / [2a01:4f9:3b:44ad::126] :443   Caddy
 | | |
 |---|---|
 | Gast | LXC 220 `congress`, unprivilegiert, `nesting=1,keyctl=1`, Debian 13, `onboot` |
-| Ressourcen | 2 Kerne, **4 GB RAM-Kappe** (keine Reservierung), **kein Swap**, 24 GB `local-lvm` (online mit `pct resize` vergrößerbar) |
+| Ressourcen | 10 Kerne (Betreiberentscheid 2026-11-11), **12 GB RAM-Kappe** (keine Reservierung), **kein Swap**, 54 GB `local-lvm` (online mit `pct resize` vergrößerbar) |
 | Netz | nur `vmbr1`: `10.10.10.80/24` (GW `10.10.10.1`), `2a01:4f9:3b:44ad:1::80/80`; keine öffentliche Adresse |
 | SSH | nur vom Wirt (`10.10.10.1`): `ssh -J hel -i ~/.ssh/patchletter_proxmox root@10.10.10.80`; Host-Key ED25519 `SHA256:vpy9DCWF0Z+lkjc6E9U+KyIx4xcZiY6UD/ccgENkl2g`; Notweg `ssh hel pct enter 220` |
 | Firewall | `nftables.conf` (Tabelle `inet gast`): 22 nur vom Wirt, 8000 und 8080 nur von sgr (`10.10.10.70`), **forward-Regel** gegen das Umgehen durch Docker-DNAT |
@@ -147,7 +147,7 @@ Datenschutzerklärung und Impressum (`web/src/i18n/de.ts`).
    Liste erhalten bleibt: `pvesh set /cluster/backup/taeglich --exclude 210,220` (ein Befehl **ersetzt** die Liste –
    fehlt die 210, landet Kali im PBS). Eigene Sicherung der App: `pg_dump` + age (Phase 7).
 2. **Wächter.** `hel-wache` überwacht nur eigene Gäste (`MUSS_LAUFEN`); CT 220 ist dort **nicht** eingetragen.
-3. ~~Deutschland-Extrakt~~ erledigt am 2026-11-11 (siehe oben). Offen: `cores` von CT 220 steht seit einer Änderung in der Proxmox-Oberfläche (2026-11-11, 12:24) auf 10 statt 2; bestätigen oder zurücksetzen.
+3. ~~Deutschland-Extrakt~~ erledigt am 2026-11-11 (siehe oben). `cores` von CT 220 steht seit 2026-11-11 (12:24, Änderung in der Proxmox-Oberfläche) auf **10** statt 2; vom Betreiber bestätigt, bleibt so.
 
 ## Nach Fristablauf (Event vorbei)
 

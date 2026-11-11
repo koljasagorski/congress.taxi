@@ -4,7 +4,12 @@
 SHELL := /bin/sh
 COMPOSE := docker compose
 
-.PHONY: help env fill-secrets up down restart logs ps build migrate db-up test lint fmt osrm-prepare seed-demo clean-data
+# Oberfläche unter EINER Origin: Caddy (Compose-Profil "proxy") leitet /api/* an die API, alles andere
+# an die SPA. Als Umgebungsvariablen gesetzt, damit .env nicht angepasst werden muss und `make down-proxy`
+# dieselben Dienste (inkl. Caddy) wieder abbaut.
+PROXY_ENV := COMPOSE_PROFILES=proxy COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml
+
+.PHONY: help env fill-secrets up up-proxy down down-proxy restart logs ps build migrate db-up test lint fmt osrm-prepare seed-demo clean-data
 
 help: ## Diese Hilfe
 	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -16,8 +21,15 @@ up: ## Gesamten Stack starten (füllt Platzhalter-Secrets, baut Images, wartet a
 	@sh scripts/fill-secrets.sh
 	$(COMPOSE) up -d --build --wait
 
+up-proxy: ## Stack MIT Caddy starten: Oberfläche + API unter https://$DOMAIN (Standard https://localhost; Ports 80/443 müssen frei sein)
+	@sh scripts/fill-secrets.sh
+	$(PROXY_ENV) $(COMPOSE) up -d --build --wait
+
 down: ## Stack stoppen (Daten bleiben)
 	$(COMPOSE) down
+
+down-proxy: ## Mit `make up-proxy` gestarteten Stack (inkl. Caddy) stoppen (Daten bleiben)
+	$(PROXY_ENV) $(COMPOSE) down
 
 restart: ## Stack neu starten
 	$(COMPOSE) restart

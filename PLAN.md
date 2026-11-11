@@ -93,6 +93,12 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
    `COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml` hat Caddy im Netz `proxy` (festes Subnetz,
    `CADDY_IPV4`) eine feste Adresse, die API veröffentlicht keinen Host-Port und `TRUSTED_PROXIES` ist genau
    diese Adresse; auf `hel` (Rand-Caddy, kein eigener Caddy) ist es `10.10.10.70` (`deploy/hel/README.md`).
+   **Standardpfad `make up` (VOLL-1):** Ohne Profil läuft kein Caddy; die SPA (`127.0.0.1:8080`) hat dann keine API
+   (`/api/*` → 404), die API liegt separat auf `:8000`. Die Oberfläche unter einer Origin startet `make up-proxy`
+   (setzt Profil und Zusatzdatei per Umgebung; `make down-proxy` baut ab). Der wörtliche DoD-Pfad
+   `cp .env.example .env && make osrm-prepare && make up` startet damit „alles“ außer dem Proxy – README, Abschnitt
+   „Oberfläche im Browser“, nennt das. Geprüft wird die Oberfläche über Caddy im CI-Job `e2e` (`e2e/stack.sh`, Profil
+   `proxy`); der Job `stack` prüft nur die API-Health auf :8000.
    Uvicorn läuft mit `--no-proxy-headers` (sonst würde es `X-Forwarded-For` von 127.0.0.1 glauben).
    Eine Limiter-Tabelle je Name (50 000 Schlüssel); IPv6 nach /64; bei voller Tabelle werden aktive Zähler nie
    verdrängt (abgelaufene fliegen raus). Neue Schlüssel zählen bei voller Tabelle im **Überlauf** (fail-closed, aber

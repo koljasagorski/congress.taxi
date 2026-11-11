@@ -20,11 +20,35 @@ Voraussetzungen: Docker + Compose v2, `make`, `curl`, [`uv`](https://docs.astral
 ```sh
 make env DEV=1        # .env mit Zufalls-Secrets erzeugen (Hamburg-Extrakt, Dev-Modus)
 make osrm-prepare     # lädt hamburg-latest (54 MB) und bereitet OSRM vor (~30 s)
-make up               # db + osrm + api starten, wartet auf Healthchecks
+make up               # db + osrm + api + web + cleanup starten, wartet auf Healthchecks
 curl localhost:8000/api/health/ready
 make test             # Tests inkl. OSRM-Live-Tests
 make lint             # ruff + mypy
 ```
+
+### Oberfläche im Browser: `make up-proxy` statt `make up`
+
+`make up` (und damit auch der Pfad `cp .env.example .env && make osrm-prepare && make up`) startet **keinen
+Reverse Proxy**. Das ist Absicht (Compose-Profil `proxy`, `PLAN.md` Annahme 9): Auf dem Zielserver sitzt ein
+Rand-Proxy davor, ein eigener Caddy würde um die Ports 80/443 streiten. Das Ergebnis dieses Standardpfads:
+
+| Was | Erreichbar | Hinweis |
+| --- | --- | --- |
+| API | `http://127.0.0.1:8000` (`/api/health`, `/api/health/ready`) | direkt, für Tests und `curl` |
+| SPA | `http://127.0.0.1:8080` | **ohne API**: nginx beantwortet `/api/*` mit 404, die Seite zeigt Fehler |
+| Caddy | läuft nicht | |
+
+Die **vollständige Anwendung unter einer Origin** (SPA, `/api` und TLS über Caddy) startet:
+
+```sh
+make up-proxy         # = COMPOSE_PROFILES=proxy COMPOSE_FILE=docker-compose.yml:docker-compose.proxy.yml docker compose up …
+# Browser: https://localhost  (DOMAIN in .env; lokal internes Zertifikat, Browser-Warnung bestätigen)
+make down-proxy       # stoppt den Stack inklusive Caddy
+```
+
+Dabei veröffentlicht nur Caddy Ports (80/443, per `HTTP_PORT`/`HTTPS_PORT` änderbar); die API ist nicht mehr auf
+`:8000` erreichbar, und `/api/health/ready` ist von außen gesperrt (404; nur `/api/health` kommt durch). Ohne `make` entspricht das den beiden Zeilen `COMPOSE_PROFILES=proxy` und
+`COMPOSE_FILE=…` in `.env.example`. Hinter einem vorhandenen Rand-Proxy (z. B. `deploy/hel/`) beides **nicht** setzen.
 
 Produktion: `make env` (ohne `DEV=1`), `OSRM_PBF_URL` bleibt `germany-latest` – vorher die
 Ressourcenhinweise in `PLAN.md` lesen.

@@ -6,14 +6,16 @@
 # Zielmaschinen-Werte, bereitet OSRM nur vor, wenn die Daten fehlen, und startet den Stack.
 # Gibt NIE den Inhalt von .env aus.
 #
-# Überschreibbar per Umgebung (Standardwerte = Teilstand mit Hamburg-Extrakt):
-#   OSRM_PBF_URL  Geofabrik-Extrakt (Deutschland erst nach Ressourcenmessung, siehe PLAN.md)
+# Überschreibbar per Umgebung (Standardwerte = Betrieb auf hel mit Deutschland-Extrakt):
+#   OSRM_PBF_URL  Geofabrik-Extrakt (Standard Deutschland; Aufbereitung braucht ≈ 24 GB RAM, siehe README)
+#   OSRM_DATA_DIR Zielverzeichnis der OSRM-Daten (Standard ./data/osrm-de)
 #   API_BIND      interne Adresse des Gasts (Port 8000 nur dort, Zugriff beschränkt nftables.conf)
 #   WEB_BIND      dito für den Web-Container (Port 8080)
 set -eu
 cd "$(dirname "$0")/../.."
 
-OSRM_PBF_URL="${OSRM_PBF_URL:-https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf}"
+OSRM_PBF_URL="${OSRM_PBF_URL:-https://download.geofabrik.de/europe/germany-latest.osm.pbf}"
+OSRM_DATA_DIR="${OSRM_DATA_DIR:-./data/osrm-de}"
 API_BIND="${API_BIND:-10.10.10.80}"
 WEB_BIND="${WEB_BIND:-10.10.10.80}"
 PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-congress.sgr.ski}"
@@ -36,13 +38,15 @@ set_kv() {
 set_kv APP_ENV production
 set_kv COOKIE_SECURE true
 set_kv OSRM_PBF_URL "$OSRM_PBF_URL"
+set_kv OSRM_DATA_DIR "$OSRM_DATA_DIR"
 set_kv API_BIND "$API_BIND"
 set_kv WEB_BIND "$WEB_BIND"
 set_kv DOMAIN "$PUBLIC_DOMAIN"
 set_kv TILE_URL "/tiles/{z}/{x}/{y}.png"
 set_kv TRUSTED_PROXIES "$EDGE_PROXY"
 
-if [ ! -f data/osrm/map.osrm.mldgr ]; then
+if [ ! -f "$OSRM_DATA_DIR/map.osrm.mldgr" ]; then
+  echo "ACHTUNG: osrm-extract für Deutschland braucht ca. 24 GB RAM (siehe deploy/hel/README.md)."
   make osrm-prepare
 else
   echo "OSRM-Daten vorhanden – Vorbereitung übersprungen (neu bauen: make osrm-prepare FORCE=1)."

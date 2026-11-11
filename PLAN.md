@@ -22,7 +22,7 @@ Alles läuft auf **einer Proxmox-VM** (empfohlen) oder einem Proxmox-LXC-Contain
   Compose-Profil abgeschaltet (Phase 7), damit Port 80/443 nicht kollidieren.
 - Es gibt keine Abhängigkeit vom Docker-Socket; alle Secrets liegen in `.env`.
 
-### Ressourcen (Hamburg gemessen, Deutschland **nicht verifiziert**)
+### Ressourcen (Hamburg und Deutschland gemessen)
 
 | Größe | Wert | Quelle/Status |
 |---|---|---|
@@ -30,15 +30,14 @@ Alles läuft auf **einer Proxmox-VM** (empfohlen) oder einem Proxmox-LXC-Contain
 | RAM `osrm-extract` für Hamburg | 390 MB Spitze (Selbstauskunft des Werkzeugs); `osrm-partition` 106 MB, `osrm-customize` 116 MB | **gemessen** (2026-11-11, macOS arm64, Docker über Colima) |
 | Dauer `make osrm-prepare` für Hamburg | ≈ 17 s insgesamt (Download ≈ 9 s), `data/osrm` ≈ 90 MB | **gemessen** (2026-11-11) |
 | `germany-latest.osm.pbf` | 4,9 GB | gemessen (Geofabrik, 2026-11-10) |
-| RAM `osrm-extract` für Deutschland | **Schätzung, grob 20 bis 35 GB Spitze** | **ungeprüft.** Untergrenze: Europa (28 GB PBF) ≈ 118 GB Peak laut OSRM-Issue #6146, linear auf 4,9 GB skaliert ≈ 20 GB. Obergrenze der Spanne: Verhältnis der Hamburg-Messung (390 MB zu 54 MB) linear hochgerechnet ≈ 35 GB. Das ist eine Spanne aus zwei Extrapolationen, keine Messung und keine harte Schranke |
-| RAM `osrm-routed` (Betrieb, MLD) | ≈ 7 GB | **extrapoliert** (Europa ≈ 39 GB). Ein Blog nennt 3–5 GB. Ungeprüft. |
-| Dauer der Aufbereitung für Deutschland | nicht bekannt | **nicht gemessen**, nicht aus Hamburg ableitbar |
-| Disk | ≥ 40 GB frei | grobe Schätzung (PBF 5 + Graph 10–15 + DB + Images) |
+| RAM `osrm-extract` für Deutschland | **23,8 GB Spitze** (Selbstauskunft; im Gast ≈ 18 GB belegt), `osrm-partition` 7,4 GB, `osrm-customize` 6,6 GB | **gemessen** (2026-11-11, CT 220 auf `hel`; die frühere Schätzung 20 bis 35 GB lag richtig) |
+| RAM `osrm-routed` (Betrieb, MLD) | 5,1 GiB direkt nach dem Start (ohne `--mmap`) | **gemessen** (2026-11-11, `hel`); unter Last nicht geprüft |
+| Dauer der Aufbereitung für Deutschland | ≈ 1 h (2 Kerne; Download 2 min, extract ≈ 40, partition ≈ 18, customize < 1) | **gemessen**; Download **ohne MD5** (Geofabrik veröffentlicht keine) |
+| Disk | `data/osrm-de` 8,0 GB + PBF 4,9 GB während der Aufbereitung; Gast 54 GB, danach 12 GB belegt | **gemessen** (2026-11-11) |
 
-Konsequenz: Die Vorbereitung (`make osrm-prepare`) für Deutschland entweder auf einer
-temporär größeren VM ausführen und `data/osrm/` übernehmen, oder ein kleineres Extrakt
-wählen (z. B. nur die für die Anreise relevanten Bundesländer). Die Betriebs-VM braucht
-dann nach den Schätzungen ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54 MB).**
+Umsetzung (Entscheidung des Betreibers 2026-11-11): Aufbereitung vorübergehend im Gast CT 220 auf `hel` (24 GB Kappe, Wächter),
+danach dauerhaft 12 GB RAM für den Gast. Der Deutschland-Extrakt läuft seit 2026-11-11 dort.
+**Lokal und in der CI wird weiter das Hamburg-Extrakt (54 MB) genutzt.**
 
 ## Annahmen und Entscheidungen
 
@@ -244,7 +243,7 @@ Nicht blockierend für den Code, aber **vor dem Echtbetrieb** zu entscheiden. Qu
 2. **Tile-Server.** Eigener Tile-Server oder Anbieter, der den Einsatz erlaubt; `TILE_URL`/`TILE_ATTRIBUTION` setzen. Der öffentliche OSM-Server ist nur für Entwicklung. Rand-Caddy (`caddy/edge-hardening.Caddyfile`) mitändern.
 3. **E-Mail-Verifikation und SMTP.** Ohne Mailversand keine Bestätigung, kein Passwort-Reset (Annahmen 6, 20). Umsetzen oder bewusst hinnehmen; dasselbe gilt für die Härtung gegen Abtasten des Fahrerstarts (Annahme 18).
 4. **PBS-Entscheidung für CT 220 (hel).** Sicherung bis zu 6 Monate widerspricht der Retention; Gast ausnehmen oder Aufbewahrung anpassen (`pvesh set /cluster/backup/taeglich --exclude 210,220`, die Liste wird ersetzt). Ebenso: App-Backup (`age` installieren, Cron für `make backup`/`make purge-backups`) einrichten oder bewusst darauf verzichten.
-5. **Deutschland-Extrakt und Hardware.** Aufbereitung braucht nach der Schätzung grob 20 bis 35 GB RAM (ungemessen), Betrieb ≈ 7 GB (ungemessen), Platte ≥ 40 GB: Wo wird aufbereitet, wie viel RAM bekommt der Gast, oder ein kleineres Extrakt? Probelauf auf der Zielhardware und Zahlen nachtragen.
+5. **Deutschland-Extrakt und Hardware.** Erledigt am 2026-11-11 (siehe Ressourcen). Offen: Verhalten unter Last; bei einem neuen Extrakt wieder ≥ 24 GB RAM kurzzeitig bereitstellen.
 6. **Impressum und Datenschutzerklärung.** Platzhalter in `web/src/i18n/de.ts` füllen, Oberfläche mit `docs/DATENSCHUTZ.md` angleichen (Sichtbarkeiten, Grenzen, Speicherdauer); Rechtsprüfung; DSB-Pflicht, Verzeichnis von Verarbeitungstätigkeiten, DSFA-Prüfung, AV-Verträge.
 7. **Linear-Projekt.** Kein Projekt für dieses Repo verknüpft (das Linear-MCP war nicht authentifiziert); Projekt-URL in `CLAUDE.md` eintragen.
 8. **Lizenz.** Das Repository enthält keine Lizenzdatei.
@@ -436,8 +435,7 @@ Ziel war „dieselbe Proxmox-VM wie `m.sgr.ski`“. Tatsächlich läuft `m.sgr.s
 CT 180 `sgr`** (1 GB RAM, nur Caddy) auf dem Wirt `hel`, der patchletter-Produktion und den Mailserver trägt und
 RAM-seitig überbucht ist. Der Stack passt nicht in CT 180. Deshalb (mit Zustimmung des Betreibers): **eigener Gast
 CT 220 `congress`** (LXC, 2 Kerne, 4 GB Kappe, 24 GB), `congress.sgr.ski` über einen zusätzlichen Block im Rand-Caddy,
-**Hamburg**-Extrakt. Der Deutschland-Extrakt ist **nicht** ausgeführt (RAM-Spitze der Vorbereitung ≈ 20 GB, ungeprüft;
-nicht auf diesem Wirt).
+Extrakt **Deutschland** (seit 2026-11-11; die Aufbereitung lief vorübergehend mit 24 GB im Gast, dauerhaft 12 GB).
 
 Alles Weitere – Aufbau, Firewall, Belege, offene Entscheidungen (PBS-Sicherung vor Phase 2!), Rückbau –
 steht in **`deploy/hel/README.md`**.

@@ -1,6 +1,6 @@
 # Betrieb auf dem Proxmox-Wirt `hel` (congress.sgr.ski)
 
-Stand **2026-11-11**: Der Gesamtstand (db, osrm **Hamburg**-Extrakt, api, web, cleanup; Commit `edd0c2d`) läuft in **CT 220 `congress`**
+Stand **2026-11-11**: Der Gesamtstand (db, osrm **Deutschland**-Extrakt, api, web, cleanup; Commit `edc9627`) läuft in **CT 220 `congress`**
 und ist unter https://congress.sgr.ski erreichbar (seit dem 10.11. nur die API-Liveness, seit dem 11.11. mit Oberfläche).
 Der Wirt und der Rand gehören zur Infrastruktur im Repository `patchletter.com` (`deploy/hel/`, dort
 `README.md` und `sgr/README.md`) – **dort nachlesen, nicht raten**. Keine Zugangsdaten, Schlüssel oder
@@ -14,7 +14,7 @@ Internet ─▶ sgr (CT 180) 65.21.92.102 / [2a01:4f9:3b:44ad::126] :443   Caddy
                                        ├─ web  (nginx, SPA)        10.10.10.80:8080   ← nur von sgr erreichbar
                                        ├─ cleanup (Retention)      ohne Port
                                        ├─ db   (PostGIS 16)        127.0.0.1:55432
-                                       └─ osrm (v26.4.0, Hamburg)  127.0.0.1:55000
+                                       └─ osrm (v26.4.0, Deutschland, 5,1 GiB RAM)  127.0.0.1:55000
 ```
 
 ## Der Gast
@@ -29,11 +29,13 @@ Internet ─▶ sgr (CT 180) 65.21.92.102 / [2a01:4f9:3b:44ad::126] :443   Caddy
 | Code | `/opt/congress` (per `git archive` übertragen, kein Git/Token auf dem Server); `/opt/congress/.deployed-rev` = übertragener Commit |
 | Konfiguration | `/opt/congress/.env` (Rechte 600, Secrets zufällig auf dem Gast erzeugt, **nie ausgeben**) |
 
-**Warum so klein?** Der Wirt ist überbucht (am 2026-11-10: 81 920 MB RAM zugesagt bei 64 GB; real ≈ 30 GB belegt,
-≈ 34 GB verfügbar) und trägt Produktion von patchletter und den Mailserver. Der Hamburg-Teilstand braucht im Betrieb
-≈ 0,2–2 GB. **Deutschland-Extrakt: nicht ausgeführt.** Die Vorbereitung (`osrm-extract`) braucht laut Extrapolation
-≈ 20 GB Spitzen-RAM (ungeprüft) – das gehört nicht auf diesen Wirt, sondern auf eine stärkere Maschine
-(Ergebnis `data/osrm/` dann kopieren) oder erst nach Absprache und Messung.
+**RAM und Platte:** Der Wirt ist überbucht (am 2026-11-10: 81 920 MB RAM zugesagt bei 64 GB; real ≈ 30 GB belegt, ≈ 34 GB verfügbar) und trägt
+Produktion von patchletter und den Mailserver. CT 220 hat dauerhaft **12 GB** RAM-Kappe (OSRM Deutschland 5,1 GiB + API + DB) und **54 GB** Platte
+(Stand 2026-11-11, vorher 4 GB und 24 GB). **Deutschland-Extrakt (ausgeführt am 2026-11-11):** `osrm-extract` hatte eine Spitze von 23,8 GB
+(Selbstauskunft), daher lief die Aufbereitung mit vorübergehend 24 GB Kappe; ein Wächter auf dem Wirt (`/root/congress-setup/extract-waechter.sh`) hätte den Job
+bei < 3 GB verfügbarem Wirt-RAM abgebrochen, griff nicht ein. Wer neu aufbereitet (anderer Extrakt, neue OSRM-Version): `pct set 220 --memory 24576`,
+in der `.env` `OSRM_PBF_URL` und `OSRM_DATA_DIR=./data/osrm-de` setzen, `make osrm-prepare` (≈ 1 h), `docker compose up -d --force-recreate osrm`, danach
+`pct set 220 --memory 12288` und das PBF löschen. Die `.env` vor der Änderung sichern (`.env.vor-deutschland` liegt auf dem Gast).
 
 ## Anlegen (reproduzierbar)
 
@@ -53,7 +55,7 @@ git archive --format=tar HEAD | ssh -J hel -i ~/.ssh/patchletter_proxmox root@10
 ```
 
 `ausrollen.sh` ist idempotent: erzeugt `.env` nur, wenn sie fehlt, setzt `APP_ENV=production`, `OSRM_PBF_URL`
-(Hamburg), `API_BIND=10.10.10.80`, `DOMAIN`, `TRUSTED_PROXIES=10.10.10.70`, bereitet OSRM nur bei fehlenden Daten vor
+(Deutschland), `OSRM_DATA_DIR=./data/osrm-de`, `API_BIND=10.10.10.80`, `DOMAIN`, `TRUSTED_PROXIES=10.10.10.70`, bereitet OSRM nur bei fehlenden Daten vor
 und startet den Stack. Es gibt nie `.env` aus. **Immer nur einen CI-geprüften Commit ausrollen.**
 
 ### Reverse-Proxy-Vertrauen und Rate-Limits (Phase 7)
@@ -130,7 +132,7 @@ Angelegt über den Cloudflare-MCP am 2026-11-10.
 | Öffentlich | `/` 200 mit CSP, Referrer-Policy, HSTS, `X-Frame-Options`, ohne `Server`; JS/CSS/SVG 200; SPA-Unterpfad 200; `/api/config` 200; `/api/health/ready` 404; `/api/docs` 404 |
 | Rand-Log | nach dem Reload nur der Admin-Eintrag von `127.0.0.1`, keine Besucher-IP |
 
-**Nicht geprüft:** Deutschland-Extrakt; Last/Dauerbetrieb; die Oberfläche im Browser auf hel (Playwright-Erweiterung
+**Nicht geprüft:** Last/Dauerbetrieb (auch RAM von `osrm-routed` unter Last); die Oberfläche im Browser auf hel (Playwright-Erweiterung
 nicht verfügbar; nur HTTP-Prüfung, keine Konten auf Produktion angelegt); IPv6 von außen (der Mac hat kein IPv6).
 Das Bundle von `edd0c2d` läuft mit dem OSM-Standard-Kartenserver (nur Entwicklung) und mit Platzhaltern in
 Datenschutzerklärung und Impressum (`web/src/i18n/de.ts`).
@@ -145,7 +147,7 @@ Datenschutzerklärung und Impressum (`web/src/i18n/de.ts`).
    Liste erhalten bleibt: `pvesh set /cluster/backup/taeglich --exclude 210,220` (ein Befehl **ersetzt** die Liste –
    fehlt die 210, landet Kali im PBS). Eigene Sicherung der App: `pg_dump` + age (Phase 7).
 2. **Wächter.** `hel-wache` überwacht nur eigene Gäste (`MUSS_LAUFEN`); CT 220 ist dort **nicht** eingetragen.
-3. **Deutschland-Extrakt** und danach mehr RAM/Platte (`pct set 220 --memory …`, `pct resize 220 rootfs +…G`).
+3. ~~Deutschland-Extrakt~~ erledigt am 2026-11-11 (siehe oben). Offen: `cores` von CT 220 steht seit einer Änderung in der Proxmox-Oberfläche (2026-11-11, 12:24) auf 10 statt 2; bestätigen oder zurücksetzen.
 
 ## Nach Fristablauf (Event vorbei)
 

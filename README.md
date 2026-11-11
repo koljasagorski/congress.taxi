@@ -305,19 +305,19 @@ startet ohne diese Daten nicht und sagt das im Log.
 
 | Extrakt | Download | RAM-Spitze von `osrm-extract` | Dauer | Status |
 |---|---|---|---|---|
-| **Hamburg** (`hamburg-latest`, Entwicklung, CI, Teilstand auf `hel`) | 51,6 MiB | **390 MB** (Selbstauskunft von `osrm-extract`) | **≈ 17 s** insgesamt inkl. Download; `data/osrm` ≈ 90 MB | **gemessen [A]**, außerdem im CI |
-| **Deutschland** (`germany-latest`, Produktionsstandard) | ≈ 4,9 GB (Geofabrik, 2026-11-10 abgelesen) | **Schätzung, nicht gemessen: grob 20 bis 35 GB.** Untergrenze: OSRM-Issue #6146 (Europa, 28 GB PBF ≈ 118 GB Spitze) linear auf 4,9 GB skaliert ≈ 20 GB. Obergrenze der Spanne: das Verhältnis aus der Hamburg-Messung (390 MB zu 54 MB) linear hochgerechnet ≈ 35 GB | **nicht gemessen** und nicht seriös aus Hamburg ableitbar | **nicht ausgeführt** |
+| **Hamburg** (`hamburg-latest`, Entwicklung, CI) | 51,6 MiB | **390 MB** (Selbstauskunft von `osrm-extract`) | **≈ 17 s** insgesamt inkl. Download; `data/osrm` ≈ 90 MB | **gemessen [A]**, außerdem im CI |
+| **Deutschland** (`germany-latest`, Produktionsstandard, **läuft auf `hel`**) | 4,9 GB (4 879 264 913 Byte, 2026-11-11; Geofabrik veröffentlicht für diese Datei keine MD5, der Download ist **ungeprüft**) | **23,8 GB** laut Selbstauskunft (`osrm-extract`; im Gast belegt ≈ 18 GB), `osrm-partition` 7,4 GB, `osrm-customize` 6,6 GB | **≈ 1 h** insgesamt auf 2 Kernen (Download 2 min, Parsen ≈ 24 min, `osrm-extract` ≈ 40 min, `osrm-partition` ≈ 18 min, `osrm-customize` < 1 min); `data/osrm-de` = 8,0 GB | **gemessen** am 2026-11-11 in CT 220 auf `hel` |
 
-Weitere ungeprüfte Größen für Deutschland: Betrieb von `osrm-routed` (MLD) ≈ 7 GB RAM (aus Europa ≈ 39 GB extrapoliert; ein Blog nennt
-3 bis 5 GB), Plattenbedarf ≥ 40 GB (grobe Schätzung). **Empfehlung:** Die Vorbereitung auf einer temporär größeren Maschine ausführen und
-`data/osrm/` kopieren, oder ein kleineres Extrakt (nur die für die Anreise relevanten Bundesländer) wählen; vor dem Event einen Probelauf auf
-der Zielhardware machen und die Zahlen hier nachtragen. Die Betriebs-VM braucht nach den Schätzungen mindestens 8 GB RAM.
+Betrieb von `osrm-routed` (MLD) mit den Deutschland-Daten: **5,1 GiB** RAM direkt nach dem Start (gemessen auf `hel`, ohne `--mmap`); Platte: 8,0 GB Daten, während der Aufbereitung zusätzlich 4,9 GB PBF (nach dem Lauf gelöscht). Nicht gemessen: RAM unter Last. **Vorgehen auf `hel` (2026-11-11):** Der Gast bekam für die Aufbereitung vorübergehend 24 GB RAM (Kappe) und 54 GB Platte, ein Wächter auf
+dem Wirt brach den Job bei < 3 GB verfügbarem Wirt-RAM ab (er griff nicht ein); danach 12 GB dauerhaft. Gebaut wurde in `data/osrm-de`
+(`OSRM_DATA_DIR=./data/osrm-de`, `OSRM_PBF_URL=…/europe/germany-latest.osm.pbf` in der `.env`), das Hamburg-Routing lief währenddessen weiter;
+dann `docker compose up -d --force-recreate osrm`. Wer neu aufbereitet, braucht ≥ 24 GB RAM für `osrm-extract` und ≥ 15 GB Platte (PBF + Daten).
 
 **Das Extrakt muss das Eventziel und alle erwarteten Startpunkte abdecken.** OSRM snappt Punkte außerhalb des Extrakts still
 auf ferne Straßen (München → 592 km Snap im Hamburg-Extrakt, gemessen in Phase 1). Die API lehnt deshalb jeden Punkt ab,
 dessen nächste Straße weiter als `MATCH_MAX_SNAP_DISTANCE_M` entfernt ist (`422 outside_coverage`), und
-`/api/health/ready` meldet, ob das Eventziel im Extrakt liegt. Mit dem Hamburg-Extrakt sind deshalb nur Fahrten innerhalb
-Hamburgs und der Umgebung möglich.
+`/api/health/ready` meldet, ob das Eventziel im Extrakt liegt. Mit dem Hamburg-Extrakt (Entwicklung, CI) sind deshalb nur Fahrten innerhalb
+Hamburgs und der Umgebung möglich; auf `hel` gilt seit 2026-11-11 der Deutschland-Extrakt.
 
 ## Deployment
 
@@ -363,7 +363,7 @@ Ein Lauf unter Coolify wurde **nicht** ausgeführt **[–]**. Aus der Konfigurat
 ### Proxmox-Variante `deploy/hel/` (Kurzform)
 
 Der Teilstand läuft seit 2026-11-10 in einem eigenen LXC-Gast (CT 220) auf dem Proxmox-Wirt `hel` unter
-<https://congress.sgr.ski>: `db`, `osrm` (Hamburg), `api`; davor der vorhandene **Rand-Caddy** (CT 180), der TLS terminiert.
+<https://congress.sgr.ski>: `db`, `osrm` (**Deutschland**, seit 2026-11-11), `api`, `web`, `cleanup`; davor der vorhandene **Rand-Caddy** (CT 180), der TLS terminiert.
 Die API ist nur von dort erreichbar (nftables auf dem Gast). Seit 2026-11-11 (Commit `edd0c2d`) reicht der Rand `/api/*` an die API
 und alles andere an die Oberfläche durch; die Audit-Fixes sind dort ausgerollt. Auf `hel` gibt es **kein App-Backup** (kein `age`, kein Cron) und die offene Entscheidung zur
 PBS-Sicherung. Aufbau, Firewall, Belege, Rückbau und alle offenen Entscheidungen: [`deploy/hel/README.md`](deploy/hel/README.md).
@@ -602,7 +602,7 @@ Ehrlich und vollständig, soweit bekannt. Spalte „Nachweis“: **[A]** hier au
 
 ### Was nicht getestet wurde (Zusammenfassung)
 
-Deutschland-Extrakt (Aufbereitung, RAM, Dauer) · Betrieb unter Coolify · Lauf auf einer echten Proxmox-VM bzw. einem frischen Linux-Host (nur CI) · Last und Dauerbetrieb ·
+Betrieb unter Coolify · Lauf auf einer echten Proxmox-VM bzw. einem frischen Linux-Host (nur CI) · Last und Dauerbetrieb ·
 mehrere Worker · Let's-Encrypt-Zertifikate lokal (nur interne CA) · echter Tile-Server und echte Kacheln · Firefox/WebKit · Ausrollen der jüngsten Fixes auf `hel` ·
 die Oberfläche der Swagger-UI hinter Caddy · alle mit **[P]** gekennzeichneten Befunde in dieser Runde (nicht erneut ausgeführt).
 

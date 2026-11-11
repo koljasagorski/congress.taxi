@@ -72,7 +72,7 @@ ist laut Tile Usage Policy nur für Entwicklung gedacht; `TILE_URL` bleibt frei 
 |---|---|---|---|
 | `POST /api/rides` | `{start{lat,lon}, departure_time, seats}` | **201** RideOut | 422 `validation_error` (`departure_time` in der Zukunft, `seats` 1–8) · 422 `outside_coverage` (Start oder Event nicht nahe einer Straße im Extrakt, `snap_or_error`) · 422 `no_route` · 409 `too_many_open_rides` (bereits `MAX_OPEN_RIDES_PER_DRIVER` = 5 offene/volle, noch nicht abgefahrene Fahrten) · 429 (`rate_limit_rides_create_per_hour`, **je Nutzer**) · 503 `routing_unavailable` |
 | `GET /api/rides/mine` | `limit` (1–100, Standard 50), `offset` | 200 `Page[RideOut]` (`{items,total,limit,offset}`), neueste Abfahrt zuerst | 422 |
-| `PATCH /api/rides/{id}` | optional `{departure_time, seats_total}` | 200 RideOut | 404 · 409 `has_accepted_requests` (Abfahrtszeit ändern, solange angenommene Anfragen existieren) · 409 `seats_below_accepted` (`seats_total` < angenommene) · 409 `ride_cancelled` · 422 |
+| `PATCH /api/rides/{id}` | optional `{departure_time, seats_total}` | 200 RideOut | 404 · 409 `has_accepted_requests` (Abfahrtszeit ändern, solange angenommene Anfragen existieren) · 409 `seats_below_accepted` (`seats_total` < angenommene) · 409 `ride_cancelled` · 409 `ride_departed` (Abfahrtszeit bereits erreicht: **jede** Änderung wird abgelehnt) · 409 `too_many_open_rides` (Abfahrtszeit ändern, wenn die übrigen offenen/vollen Fahrten bereits `MAX_OPEN_RIDES_PER_DRIVER` erreichen) · 422 |
 | `DELETE /api/rides/{id}` | – | **204**; Fahrt → `cancelled`; alle `pending`/`accepted`-Anfragen → `cancelled` (`decided_at` gesetzt) | 404 |
 
 `end_geom` = Eventziel zum Zeitpunkt der Anlage; `start_geom` = der **gelieferte** Punkt (nicht gesnappt);
@@ -133,7 +133,7 @@ Details: Docstring `app/services/matching.py`, `PLAN.md` Annahme 18.
 
 **Bekannte Grenze (Scheinfahrten, SEC-1):** Gegen das Verdrängen echter Fahrten aus den `MATCH_MAX_CANDIDATES` Plätzen gibt es
 zwei Sperren: höchstens `MAX_OPEN_RIDES_PER_DRIVER` (5) offene/volle, noch nicht abgefahrene Fahrten je Fahrer (`POST /api/rides`
-→ 409 `too_many_open_rides`; die Nutzerzeile wird dabei gesperrt, parallele Anlagen überschreiten die Grenze nicht) und höchstens
+→ 409 `too_many_open_rides`; die Nutzerzeile wird dabei gesperrt, parallele Anlagen überschreiten die Grenze nicht; dieselbe Zählung und Sperre gelten im gemeinsamen Helfer für `PATCH` der Abfahrtszeit, und eine bereits abgefahrene Fahrt ist per `PATCH` nicht mehr änderbar (409 `ride_departed`), sie lässt sich also nicht in die Zukunft zurückschieben, um die Grenze zu umgehen) und höchstens
 `MATCH_MAX_CANDIDATES_PER_DRIVER` (2) Kandidaten je Fahrer. Ein Konto belegt damit höchstens 2 der 30 Plätze. Es **bleibt
 möglich**, mit vielen Konten (je 1 Scheinfahrt exakt am Abholpunkt) die Plätze zu füllen: Registrierung ist auf 10/h je IP
 begrenzt, eine E-Mail-Bestätigung gibt es nicht (sie bräuchte SMTP – Entscheidung des Betreibers). Wirksam bleibt dann nur

@@ -53,9 +53,13 @@ async def my_rides(
 
 @router.patch("/{ride_id}")
 async def patch_ride(
-    ride_id: uuid.UUID, body: RidePatch, user: CurrentUser, session: SessionDep
+    ride_id: uuid.UUID,
+    body: RidePatch,
+    user: CurrentUser,
+    session: SessionDep,
+    settings: SettingsDep,
 ) -> RideOut:
-    return await service.patch_ride(session, ride_id, user.id, body)
+    return await service.patch_ride(session, settings, ride_id, user.id, body)
 
 
 @router.delete("/{ride_id}", status_code=204)

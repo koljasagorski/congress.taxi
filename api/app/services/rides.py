@@ -2,7 +2,9 @@
 
 Regeln stehen in docs/API-CONTRACT.md (Abschnitt „Fahrten“). Wichtig für die Nebenläufigkeit:
 Schreibende Operationen sperren **zuerst die Fahrtzeile** (``SELECT … FOR UPDATE``) und erst danach
-Anfragen – dieselbe Reihenfolge wie Phase 5, damit keine Deadlocks entstehen.
+Anfragen – dieselbe Reihenfolge wie Phase 5, damit keine Deadlocks entstehen. Einzige Ausnahme: Wer
+die Abfahrtszeit ändert (PATCH), sperrt vorher die Nutzerzeile (Obergrenze offener Fahrten, SEC-1),
+wie es auch das Löschen eines Kontos tut (Nutzer, dann kaskadierend die Fahrten).
 
 Datenschutz: Dieses Modul loggt nichts (keine Koordinaten, IDs oder Zeiten).
 """
@@ -151,6 +153,61 @@ async def list_my_rides(
     )
 
 
+# --- Obergrenze offener Fahrten (SEC-1) ----------------------------------------------------------
+
+
+async def _lock_driver(session: AsyncSession, driver_id: uuid.UUID) -> None:
+    """Nutzerzeile sperren (``FOR NO KEY UPDATE``): serialisiert nur Anlegen/Verschieben derselben
+    Fahrerin bzw. desselben Fahrers, blockiert aber keine Fremdschlüssel-Prüfungen anderer Tabellen.
+
+    Reihenfolge: Beim Verschieben zuerst die Nutzer-, dann die Fahrtzeile sperren – wie das Löschen
+    eines Kontos (Nutzerzeile, dann kaskadierend die Fahrten); die umgekehrte Reihenfolge wäre ein
+    Deadlock-Risiko.
+    """
+    locked = await session.scalar(
+        select(User.id).where(User.id == driver_id).with_for_update(key_share=True)
+    )
+    if locked is None:  # Konto wurde gelöscht, während OSRM antwortete bzw. die Anfrage lief
+        await session.rollback()
+        raise ApiError(401, "unauthorized", "Anmeldung erforderlich")
+
+
+async def enforce_open_ride_limit(
+    session: AsyncSession,
+    settings: Settings,
+    driver_id: uuid.UUID,
+    *,
+    exclude_ride_id: uuid.UUID | None = None,
+) -> None:
+    """Höchstens ``MAX_OPEN_RIDES_PER_DRIVER`` offene/volle, noch nicht abgefahrene Fahrten.
+
+    Gemeinsam für ``create_ride`` und ``patch_ride``: sperrt die Nutzerzeile (parallele Aufrufe
+    können die Grenze nicht gemeinsam überschreiten), zählt und lehnt sonst mit 409
+    ``too_many_open_rides`` ab. ``exclude_ride_id`` nimmt die gerade geänderte Fahrt aus der
+    Zählung, weil sie nach der Änderung ohnehin einen Platz belegt.
+    """
+    await _lock_driver(session, driver_id)
+    query = (
+        select(func.count())
+        .select_from(Ride)
+        .where(
+            Ride.driver_id == driver_id,
+            Ride.status.in_(("open", "full")),
+            Ride.departure_time > func.now(),
+        )
+    )
+    if exclude_ride_id is not None:
+        query = query.where(Ride.id != exclude_ride_id)
+    if (await session.scalar(query) or 0) >= settings.max_open_rides_per_driver:
+        await session.rollback()
+        raise ApiError(
+            409,
+            "too_many_open_rides",
+            f"Es sind höchstens {settings.max_open_rides_per_driver} offene Fahrten "
+            "gleichzeitig möglich. Storniere eine Fahrt oder warte, bis sie abgefahren ist.",
+        )
+
+
 # --- Anlegen -------------------------------------------------------------------------------------
 
 
@@ -178,32 +235,7 @@ async def create_ride(
     line = build_line(route.geometry, start, event)
 
     try:
-        # Obergrenze offener Fahrten (SEC-1). Die Nutzerzeile wird gesperrt (``FOR NO KEY UPDATE``:
-        # blockiert nur andere Anleger desselben Fahrers, nicht die Fremdschlüssel-Prüfung anderer
-        # Tabellen), damit parallele Anlagen die Grenze nicht gemeinsam überschreiten.
-        locked = await session.scalar(
-            select(User.id).where(User.id == driver_id).with_for_update(key_share=True)
-        )
-        if locked is None:  # Konto wurde gelöscht, während OSRM antwortete
-            await session.rollback()
-            raise ApiError(401, "unauthorized", "Anmeldung erforderlich")
-        open_count = await session.scalar(
-            select(func.count())
-            .select_from(Ride)
-            .where(
-                Ride.driver_id == driver_id,
-                Ride.status.in_(("open", "full")),
-                Ride.departure_time > func.now(),
-            )
-        )
-        if (open_count or 0) >= settings.max_open_rides_per_driver:
-            await session.rollback()
-            raise ApiError(
-                409,
-                "too_many_open_rides",
-                f"Es sind höchstens {settings.max_open_rides_per_driver} offene Fahrten "
-                "gleichzeitig möglich. Storniere eine Fahrt oder warte, bis sie abgefahren ist.",
-            )
+        await enforce_open_ride_limit(session, settings, driver_id)
         ride_id = await session.scalar(
             insert(Ride)
             .values(
@@ -236,6 +268,7 @@ async def create_ride(
 class LockedRide(NamedTuple):
     status: str
     departure_time: datetime
+    departed: bool  # Abfahrtszeit <= now() der Datenbank
 
 
 async def _lock_own_ride(
@@ -244,14 +277,21 @@ async def _lock_own_ride(
     """Fahrtzeile sperren (zuerst!). Fremde und unbekannte Fahrten → 404 (kein Orakel)."""
     row = (
         await session.execute(
-            select(Ride.id, Ride.status, Ride.departure_time)
+            select(
+                Ride.id,
+                Ride.status,
+                Ride.departure_time,
+                (Ride.departure_time <= func.now()).label("departed"),
+            )
             .where(Ride.id == ride_id, Ride.driver_id == driver_id)
             .with_for_update()
         )
     ).first()
     if row is None:
         raise _not_found()
-    return LockedRide(status=row.status, departure_time=row.departure_time)
+    return LockedRide(
+        status=row.status, departure_time=row.departure_time, departed=bool(row.departed)
+    )
 
 
 async def _count_accepted(session: AsyncSession, ride_id: uuid.UUID) -> int:
@@ -264,11 +304,22 @@ async def _count_accepted(session: AsyncSession, ride_id: uuid.UUID) -> int:
 
 
 async def patch_ride(
-    session: AsyncSession, ride_id: uuid.UUID, driver_id: uuid.UUID, data: RidePatch
+    session: AsyncSession,
+    settings: Settings,
+    ride_id: uuid.UUID,
+    driver_id: uuid.UUID,
+    data: RidePatch,
 ) -> RideOut:
+    if data.departure_time is not None:
+        # Nutzerzeile VOR der Fahrtzeile sperren (Reihenfolge wie beim Löschen des Kontos).
+        await _lock_driver(session, driver_id)
     ride = await _lock_own_ride(session, ride_id, driver_id)
     if ride.status == "cancelled":
         raise ApiError(409, "ride_cancelled", "Die Fahrt wurde storniert und ist nicht änderbar")
+    if ride.departed:
+        # Eine abgefahrene Fahrt zählt nicht als offen; sie in die Zukunft zu schieben würde die
+        # Obergrenze offener Fahrten (SEC-1) umgehen. Deshalb ist sie überhaupt nicht mehr änderbar.
+        raise ApiError(409, "ride_departed", "Die Fahrt ist bereits abgefahren und nicht änderbar")
 
     accepted = await _count_accepted(session, ride_id)
     values: dict[str, object] = {}
@@ -281,6 +332,7 @@ async def patch_ride(
                 "Die Abfahrtszeit kann nicht geändert werden, solange angenommene Anfragen "
                 "existieren",
             )
+        await enforce_open_ride_limit(session, settings, driver_id, exclude_ride_id=ride_id)
         values["departure_time"] = data.departure_time
 
     if data.seats_total is not None:

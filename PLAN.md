@@ -172,7 +172,10 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
     `MATCH_MAX_CANDIDATES` (30) gekürzt; ohne weitere Sperre könnte ein Konto mit ≥ 30 Fahrten exakt am Abholpunkt alle
     Plätze belegen und echte Fahrer aus dem Ergebnis verdrängen. Sperren: (a) `MAX_OPEN_RIDES_PER_DRIVER` (5): offene oder
     volle, noch nicht abgefahrene Fahrten je Fahrer, sonst `409 too_many_open_rides` (Nutzerzeile `FOR NO KEY UPDATE` gesperrt,
-    damit parallele Anlagen die Grenze nicht überschreiten); (b) `MATCH_MAX_CANDIDATES_PER_DRIVER` (2): je Fahrer kommen nur
+    damit parallele Anlagen die Grenze nicht überschreiten; gemeinsamer Helfer `enforce_open_ride_limit` für `POST` und `PATCH` der
+    Abfahrtszeit; eine bereits abgefahrene Fahrt ist per `PATCH` nicht mehr änderbar → `409 ride_departed`, sonst ließe sie sich
+    in die Zukunft schieben und die Grenze umgehen; beim `PATCH` wird die Nutzerzeile vor der Fahrtzeile gesperrt, wie es das
+    Löschen eines Kontos tut, um Deadlocks zu vermeiden); (b) `MATCH_MAX_CANDIDATES_PER_DRIVER` (2): je Fahrer kommen nur
     die nächsten Fahrten in die Kandidatenliste (`row_number() OVER (PARTITION BY driver_id …)` im Vorfilter; der teure
     Anzeigeroutenteil läuft erst für die Gewinner). Folge für echte Fahrer: Wer mehr als 2 Fahrten mit gleichem Start im
     selben Zeitfenster anbietet, erscheint in der Suche mit den 2 frühesten; die übrigen sind über das Zeitfenster sichtbar.

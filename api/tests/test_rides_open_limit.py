@@ -101,3 +101,71 @@ async def test_parallel_creates_cannot_exceed_the_limit(client: httpx.AsyncClien
     codes = sorted(r.status_code for r in results)
     assert codes == [201] * LIMIT + [409] * (8 - LIMIT), codes
     assert await _open_rides(db, driver["id"]) == LIMIT
+
+
+# --- PATCH darf das Limit nicht umgehen (abgefahrene Fahrt in die Zukunft schieben) -------------
+
+
+async def _patch(client: httpx.AsyncClient, user: dict[str, Any], ride_id: Any, body: dict) -> Any:
+    return await client.patch(f"{RIDES}/{ride_id}", json=body, headers=auth_headers(user))
+
+
+async def _counted_rides(db: Any, driver_id: Any) -> int:
+    return int(
+        await db.fetchval(
+            "SELECT count(*) FROM rides WHERE driver_id = $1 AND status IN ('open', 'full') "
+            "AND departure_time > now()",
+            driver_id,
+        )
+    )
+
+
+async def test_patch_departed_ride_into_future_is_rejected(
+    client: httpx.AsyncClient, db: Any
+) -> None:
+    driver = await create_user(db)
+    for k in range(LIMIT):
+        await insert_ride(db, driver["id"], departure_time=future(30 + k))
+    departed = await insert_ride(db, driver["id"], departure_time=future(-5))
+    before = await db.fetchval("SELECT departure_time FROM rides WHERE id = $1", departed)
+    with override_settings(max_open_rides_per_driver=LIMIT):
+        resp = await _patch(client, driver, departed, {"departure_time": future(60).isoformat()})
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["error"]["code"] == "ride_departed"
+    assert await db.fetchval("SELECT departure_time FROM rides WHERE id = $1", departed) == before
+    assert await _counted_rides(db, driver["id"]) == LIMIT
+
+
+async def test_patch_departed_ride_is_rejected_even_below_the_limit(
+    client: httpx.AsyncClient, db: Any
+) -> None:
+    driver = await create_user(db)
+    departed = await insert_ride(db, driver["id"], departure_time=future(-5))
+    for body in ({"departure_time": future(60).isoformat()}, {"seats_total": 5}, {}):
+        resp = await _patch(client, driver, departed, body)
+        assert resp.status_code == 409, (body, resp.text)
+        assert resp.json()["error"]["code"] == "ride_departed"
+    assert await _counted_rides(db, driver["id"]) == 0
+
+
+async def test_patch_open_ride_at_the_limit_still_works(client: httpx.AsyncClient, db: Any) -> None:
+    driver = await create_user(db)
+    ids = [await insert_ride(db, driver["id"], departure_time=future(30 + k)) for k in range(LIMIT)]
+    with override_settings(max_open_rides_per_driver=LIMIT):
+        resp = await _patch(client, driver, ids[0], {"departure_time": future(70).isoformat()})
+    assert resp.status_code == 200, resp.text
+    assert await _counted_rides(db, driver["id"]) == LIMIT
+
+
+async def test_patch_departure_time_uses_the_same_limit_check(
+    client: httpx.AsyncClient, db: Any
+) -> None:
+    # Gemeinsamer Helfer: Die Abfahrtsänderung zählt die übrigen offenen Fahrten wie das Anlegen,
+    # auch hier greift 409 too_many_open_rides (hier: Grenze nachträglich gesenkt).
+    driver = await create_user(db)
+    ids = [await insert_ride(db, driver["id"], departure_time=future(30 + k)) for k in range(LIMIT)]
+    with override_settings(max_open_rides_per_driver=LIMIT - 1):
+        resp = await _patch(client, driver, ids[0], {"departure_time": future(70).isoformat()})
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["error"]["code"] == "too_many_open_rides"
+    assert await _counted_rides(db, driver["id"]) == LIMIT

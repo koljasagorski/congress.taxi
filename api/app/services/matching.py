@@ -26,7 +26,10 @@ Bekannte Grenzen:
   der vollen ``route_geom``) und Umweg (``compute_detour`` ab dem exakten Fahrer-Start) nutzen
   bewusst die ungekürzte Route: Der Umweg muss real von dort gerechnet werden (Vertrag; Phase 5
   rechnet identisch), sonst wäre er falsch. Wer viele Abholpunkte abfragt, kann aus „Treffer
-  ja/nein“ und den Umweg-Werten (≈ 0 auf dem verborgenen Abschnitt) den Start eingrenzen. Die
+  ja/nein“ und den Umweg-Werten (≈ 0 auf dem verborgenen Abschnitt) den Start eingrenzen.
+  Gemessen (Prüfer, Hamburg-Extrakt, nur gerundete ``detour_km``): 8 bis 15 Abfragen genügen,
+  Fehler Median ≈ 200 m, Bestfall ≈ 20 bis 50 m, Einzelfälle bis ≈ 900 m; „wenige km“ kam nicht
+  vor. Der Schutz gilt der Anzeige, nicht einem gezielten Angreifer. Die
   **Ausgabe** ist deshalb gröber als die interne Rechnung (:func:`coarse_detour_km` usw.:
   0,5-km-Schritte, ganze Minuten, Verhältnis auf 2 Stellen); Filter und Sortierung bleiben exakt.
   Weitere Gegenmaßnahmen sind das Rate-Limit (Phase 7, ``RATE_LIMIT_MATCH_PER_MIN``) und die

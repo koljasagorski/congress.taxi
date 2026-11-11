@@ -165,11 +165,20 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
 18. **Matching: Standort-Orakel und Abtasten des Routenanfangs (Phase 4).** Die Anzeige-Route wird am Anfang um
     `MATCH_ROUTE_TRIM_START_M` gekürzt (entlang der Route, in Metern). Das schützt die **Anzeige**, nicht gegen aktives
     Abtasten: Vorfilter (`ST_DWithin` auf der vollen Route) und Umweg (ab dem exakten Fahrer-Start) brauchen die
-    ungekürzte Route. Wer viele Abholpunkte abfragt, kann aus „Treffer ja/nein“ und den Umweg-Werten den Start grob
-    (einige hundert Meter bis wenige km, je nach Rundung) eingrenzen. Entschärft durch (a) Anmeldepflicht, (b) **gröbere Ausgabe**
+    ungekürzte Route. Wer viele Abholpunkte abfragt, kann aus „Treffer ja/nein“ und den Umweg-Werten den Start
+    eingrenzen. **Gemessen (DS-3, Prüfer, Hamburg-Extrakt):** Schon 8 bis 15 `/api/match`-Abfragen eines frisch registrierten,
+    nicht verifizierten Kontos (unter dem Limit von 20/min; Registrierung 10/h je IP) genügen, um aus den gerundeten
+    `detour_km` plus öffentlich bekannter Kürzungslänge und sichtbarem Routenanfang den Start zu bestimmen: Median ≈ 200 m
+    Fehler, Bestfall ≈ 20 bis 50 m (eine 19,5-km-Fahrt: 17 m), Einzelfälle bis ≈ 900 m; 8 von 12 Fahrten unter 250 m, „wenige
+    km“ kam nicht vor. Der Schutz gilt also der **Anzeige** und dem beiläufigen Betrachter, nicht einem entschlossenen,
+    angemeldeten Angreifer. Entschärft (nicht verhindert) durch (a) Anmeldepflicht, (b) **gröbere Ausgabe**
     (`detour_km` in 0,5-km-Schritten, `detour_minutes` ganzzahlig, `detour_ratio` 2 Stellen; Filter und Sortierung
     intern exakt), (c) Rate-Limit `RATE_LIMIT_MATCH_PER_MIN` je IP und `RATE_LIMIT_MATCH_USER_PER_MIN` je Nutzer (Phase 7). Verbleibende Grenze bewusst hingenommen
-    (kurzlebige Event-App); README/Datenschutzdoku nennen sie in Phase 8.
+    (kurzlebige Event-App); README/Datenschutzdoku nennen sie in Phase 8. Die Oberfläche sagt es ehrlich
+    (`offer.startPrivacy`: gezieltes Abtasten kann den Startbereich eingrenzen, besser einen Startpunkt in der Nähe statt der
+    Haustür wählen). **Offene Betreiberentscheidung (technische Härtung, nicht umgesetzt):** Fahrt-Start bei der Anlage auf ein
+    gröberes Raster/einen Versatz abbilden (müsste auch für Vorfilter und Umweg gelten, kostet Genauigkeit des Umwegs) oder
+    nur Umwegklassen statt km-Werte ausgeben; ebenso E-Mail-Verifikation vor `/api/match` (braucht SMTP).
     **Phase 5:** `RequestOut.detour_km`/`detour_minutes` (Anlegen, Listen, accept/decline/cancel) nutzen dieselben
     `coarse_detour_*`-Funktionen wie `/api/match`; `422 detour_too_large` entspricht dem Filter `acceptable`. Ein
     eigener Abholpunkt liefert damit keine genauere Umweg-Information als die Suche. Das enge Rate-Limit für

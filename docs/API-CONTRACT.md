@@ -127,7 +127,9 @@ exakte Werte. `422 detour_too_large` ist dieselbe Ja/Nein-Information wie der Fi
 
 **Bekannte Grenze (Abtasten des Routenanfangs):** Die Anzeige-Route ist am Anfang gekürzt, Vorfilter und Umweg nutzen aber
 die ungekürzte Route. Wer viele Abholpunkte abfragt, kann aus „Treffer ja/nein“ und den Umweg-Werten den Start der Route
-grob (größenordnungsmäßig einige hundert Meter bis wenige km, je nach Rundung) eingrenzen. Gegenmaßnahmen: Anmeldepflicht,
+eingrenzen. Gemessen (Prüfer, Hamburg-Extrakt): mit 8 bis 15 Abfragen eines nicht verifizierten Kontos (unter dem Rate-Limit)
+Median ≈ 200 m Fehler, Bestfall ≈ 20 bis 50 m, Einzelfälle bis ≈ 900 m. Der Schutz gilt der Anzeige, nicht einem gezielten
+Angreifer. Gegenmaßnahmen: Anmeldepflicht,
 gröbere Ausgabe (s. o.), Rate-Limit `RATE_LIMIT_MATCH_PER_MIN` (Phase 7) – Abtasten wird gebremst, nicht verhindert.
 Details: Docstring `app/services/matching.py`, `PLAN.md` Annahme 18.
 

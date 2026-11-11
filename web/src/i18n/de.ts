@@ -163,7 +163,7 @@ export const de = {
   "offer.summarySeats": "Freie Plätze",
   "offer.toMine": "Zu meinen Fahrten",
   "offer.another": "Weitere Fahrt anbieten",
-  "offer.startPrivacy": "Der Anfang deiner Route wird anderen nicht genau angezeigt, damit deine Wohnadresse geschützt bleibt.",
+  "offer.startPrivacy": "Der Anfang deiner Route wird anderen nicht genau angezeigt. Ein gezieltes Abtasten kann den Startbereich dennoch eingrenzen. Wähle bei Bedarf einen Startpunkt in der Nähe statt deiner Haustür.",
 
   // Mitfahrt suchen
   "search.title": "Mitfahrt suchen",

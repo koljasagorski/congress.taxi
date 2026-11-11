@@ -27,7 +27,7 @@ Alles läuft auf **einer Proxmox-VM** (empfohlen) oder einem Proxmox-LXC-Contain
 | Größe | Wert | Quelle/Status |
 |---|---|---|
 | `hamburg-latest.osm.pbf` | 51,6 MiB (≈ 54 MB) | **gemessen** (2026-11-11), MD5 geprüft |
-| RAM `osrm-extract` für Hamburg | 390 MB Spitze (Selbstauskunft des Werkzeugs); `osrm-partition` 106 MB, `osrm-customize` 116 MB | **gemessen** (2026-11-11, macOS arm64, Docker Desktop) |
+| RAM `osrm-extract` für Hamburg | 390 MB Spitze (Selbstauskunft des Werkzeugs); `osrm-partition` 106 MB, `osrm-customize` 116 MB | **gemessen** (2026-11-11, macOS arm64, Docker über Colima) |
 | Dauer `make osrm-prepare` für Hamburg | ≈ 17 s insgesamt (Download ≈ 9 s), `data/osrm` ≈ 90 MB | **gemessen** (2026-11-11) |
 | `germany-latest.osm.pbf` | 4,9 GB | gemessen (Geofabrik, 2026-11-10) |
 | RAM `osrm-extract` für Deutschland | **Schätzung, grob 20 bis 35 GB Spitze** | **ungeprüft.** Untergrenze: Europa (28 GB PBF) ≈ 118 GB Peak laut OSRM-Issue #6146, linear auf 4,9 GB skaliert ≈ 20 GB. Obergrenze der Spanne: Verhältnis der Hamburg-Messung (390 MB zu 54 MB) linear hochgerechnet ≈ 35 GB. Das ist eine Spanne aus zwei Extrapolationen, keine Messung und keine harte Schranke |
@@ -276,7 +276,7 @@ Jede Phase: eigener Conventional-Commit, grüne Tests, sofort pushen.
 
 Wird pro Phase ergänzt – nur Dinge, die wirklich ausgeführt wurden.
 
-### Phase 1 (lokal: macOS arm64, Docker Desktop, Hamburg-Extrakt)
+### Phase 1 (lokal: macOS arm64, Docker über Colima, Hamburg-Extrakt)
 
 - `make env DEV=1` → `make osrm-prepare` (≈ 25 s) → `make up`: db, osrm und api werden **healthy**.
 - `GET /api/health/ready` → 200, PostGIS 3.5, Eventziel 20,5 m von der nächsten Straße.
@@ -318,7 +318,7 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
   ausgeführt: 7 Konten (`@demo.invalid`), 6 Fahrten, Kontrollsuche ab Altona 6 Treffer; zweiter Lauf idempotent
   (0 neu). **Erst nach Phase 5 möglich:** Demo-Anfragen/-Annahmen (das Skript legt noch keine Anfragen an).
 
-### Phase 7 (lokal: macOS arm64, Docker Desktop, echtes PostGIS + OSRM Hamburg)
+### Phase 7 (lokal: macOS arm64, Docker über Colima, echtes PostGIS + OSRM Hamburg)
 
 - Integriert aus dem Entwicklungszweig (Squash) und nachgezogen: Rate-Limiter je Name mit fail-closed-Verhalten,
   Login-Limit je E-Mail, Nutzer-Limits für Match/Fahrt anlegen/Anfrage senden, Docs nur außerhalb `production`,
@@ -334,7 +334,7 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
 - **Nicht lokal geprüft:** `shellcheck` (nicht installiert; läuft in der CI), Let's-Encrypt-Zertifikate (lokal interne CA),
   Lauf auf `hel` (nichts ausgerollt), Last/Dauerbetrieb, mehrere Worker.
 
-### Phase 6 (lokal: macOS arm64, Docker Desktop, echtes PostGIS + OSRM Hamburg)
+### Phase 6 (lokal: macOS arm64, Docker über Colima, echtes PostGIS + OSRM Hamburg)
 
 - Integriert aus dem Entwicklungszweig (Squash) und nachgezogen: vergröberte Umweg-Werte (Typen/Anzeige/Tests), Fehlerbehandlung
   für `413`/`429`/`502-504` ohne JSON-Körper, `map.attribution` in `GET /api/config` (Vertrag, `test_config_endpoint.py`),
@@ -352,7 +352,7 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
   in der Konsole, Kartendarstellung, Tastaturbedienung – die Komponenten sind nur in jsdom getestet. Let's-Encrypt/TLS am `web`-Pfad.
   Frontend auf `hel`: nicht ausgerollt, der Rand-Caddy reicht weiter nur `/api/health` durch (siehe `deploy/hel/README.md`).
 
-### Phase 8, Teil E2E (lokal: macOS arm64, Docker Desktop, echtes PostGIS + OSRM Hamburg + Chromium)
+### Phase 8, Teil E2E (lokal: macOS arm64, Docker über Colima, echtes PostGIS + OSRM Hamburg + Chromium)
 
 - `make e2e` startet das eigene Compose-Projekt `mitfahrer-e2e` (`e2e/stack.sh`; Caddy auf `http://127.0.0.1:18080`, Rate-Limits nur dort
   angehoben, Kachel-Host `tiles.e2e.invalid` wird im Test beantwortet) und führt Playwright 1.64.1 (Chromium) aus.
@@ -373,7 +373,7 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
   (Viewport 360×740, Kopfzeile, Trefferliste, Kontaktfreigabe beider Seiten; vor dem Fix rot, danach grün). Nur dieser eine Test läuft mobil.
 - Nicht geprüft: Firefox/WebKit, weitere Mobil-Viewports, echte Kacheln, TLS.
 
-### Phase 8, Teil Dokumentation (2026-11-11, macOS arm64, Docker Desktop, Hamburg-Extrakt)
+### Phase 8, Teil Dokumentation (2026-11-11, macOS arm64, Docker über Colima, Hamburg-Extrakt)
 
 Geschrieben wurden `README.md`, `docs/DATENSCHUTZ.md` (Entwurf, kein Rechtsrat), dieser Plan und die Übergabe in `CLAUDE.md`. Nicht geändert wurden Code, Oberfläche, `docs/API-CONTRACT.md`
 (eingefroren) und `deploy/hel/README.md`; Befunde dazu stehen als offene Punkte im README.
@@ -388,7 +388,7 @@ Geschrieben wurden `README.md`, `docs/DATENSCHUTZ.md` (Entwurf, kein Rechtsrat),
 Im Repo selbst: `make lint` grün (ruff, ruff format, mypy), `REQUIRE_OPS_TESTS=1 make test`: **839 passed** (68 s, nichts übersprungen), `make web-check` grün (vitest 102 Tests, Build, `check:external`),
 `make e2e`: **7 passed** (Chromium; ein Test mehr als in der E2E-Runde oben, die Registrierungs-Formularprüfung in `01-konto-und-fahrt.spec.ts`).
 **Nicht** ausgeführt: `cp .env.example .env`-Pfad (nur CI-belegt, mit Hamburg), Deutschland-Extrakt, Coolify, Lauf auf `hel`.
-Gefunden: Ein Bind-Mount aus dem Scratchpad ist unter Docker Desktop leer (siehe `CLAUDE.md`); das Log des Datenbank-Containers enthält bei Constraint-Verletzungen Zeileninhalt (README D-5).
+Gefunden: Ein Bind-Mount aus dem Scratchpad ist unter Colima leer (siehe `CLAUDE.md`); das Log des Datenbank-Containers enthält bei Constraint-Verletzungen Zeileninhalt (README D-5).
 
 **Korrektur zu Commit `6851a93`:** Der Commit-Text nennt „12 neue Tests“; tatsächlich sind es 14 (9 in `test_cleanup.py`, 3 in `test_config.py`, 2 für das Backup-Skript). Der Text bleibt (kein Force-Push).
 

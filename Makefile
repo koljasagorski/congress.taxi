@@ -95,7 +95,8 @@ cleanup: ## Retention-Cleanup einmal ausführen (DRY=1: nur zählen; CLEANUP_ARG
 web-install: ## Frontend-Abhängigkeiten installieren (npm ci in web/)
 	cd web && npm ci --no-audit --no-fund
 
-web-check: ## Frontend prüfen: tsc, eslint, vitest, Build, check:external (wie CI)
+web-check: ## Frontend prüfen: tsc, eslint, vitest, Build, check:external (wie CI; installiert fehlende Abhängigkeiten)
+	cd web && if [ ! -d node_modules ]; then npm ci --no-audit --no-fund; fi
 	cd web && npx tsc --noEmit && npm run lint && npm test && npm run build && npm run check:external
 
 # --- E2E (Phase 8) ---

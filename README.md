@@ -18,7 +18,7 @@ alle Daten werden nach der Veranstaltung automatisch gelöscht.
 [`e2e/README.md`](e2e/README.md) (End-to-End-Tests) · [`CLAUDE.md`](CLAUDE.md) (Übergabe für Coding-Agenten).
 
 **Nachweis-Kennzeichnung.** Aussagen über Messwerte und Prüfungen tragen, wo es darauf ankommt, eine Quelle:
-**[A]** in der Dokumentationsrunde am 2026-11-11 selbst ausgeführt (macOS arm64, Docker Desktop, Hamburg-Extrakt) ·
+**[A]** in der Dokumentationsrunde am 2026-11-11 selbst ausgeführt (macOS arm64, Docker über Colima, Hamburg-Extrakt) ·
 **[T]** durch automatische Tests oder CI belegt · **[P]** Befund aus einer früheren Prüfrunde übernommen, hier **nicht**
 erneut ausgeführt · **[–]** nicht geprüft.
 
@@ -113,7 +113,9 @@ dessen Rolle (`caddy/edge-hardening.Caddyfile` ist die Vorlage dafür).
 ## Quickstart (Entwicklung)
 
 Voraussetzungen: Docker + Compose v2, `make` (GNU Make 3.81 genügt), `curl`, `openssl`, [`uv`](https://docs.astral.sh/uv/);
-für Frontend-Prüfung und E2E Node.js ≥ 22; für Backups [`age`](https://age-encryption.org/).
+für Frontend-Prüfung und E2E Node.js ≥ 22 (`make web-check` und `make e2e` installieren fehlende npm-Abhängigkeiten selbst); für Backups
+[`age`](https://age-encryption.org/). **macOS:** Bind-Mounts (`data/osrm`, `caddy/`) funktionieren nur für Pfade, die die Docker-VM sieht –
+bei Colima ist das nur `$HOME`; ein Klon unter `/tmp` oder `/private/tmp` ergibt leere Mounts (`osrm-extract: Input file … not found`).
 
 ```sh
 make env DEV=1        # .env mit Zufalls-Secrets erzeugen (Hamburg-Extrakt, APP_ENV=development, COOKIE_SECURE=false)
@@ -127,7 +129,7 @@ make web-check        # Frontend: tsc, eslint, vitest, Build, check:external
 make e2e              # Playwright gegen einen eigenen Stack (Projekt mitfahrer-e2e)
 ```
 
-**Ausgeführt [A]** in einer frischen Kopie des Repos (`git archive`), Docker Desktop auf macOS arm64, mit anderen
+**Ausgeführt [A]** in einer frischen Kopie des Repos (`git archive`), Docker über Colima auf macOS arm64, mit anderen
 Hostports als im Standard (damit ein vorhandener Dev-Stack unberührt bleibt). Beobachtet:
 
 | Schritt | Ergebnis |

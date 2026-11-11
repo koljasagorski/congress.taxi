@@ -33,7 +33,7 @@ Auf hel ist nur der Teilstand von `97687a9` ausgerollt (nur `/api/health`); die 
 - **OSRM snappt Punkte außerhalb des Extrakts still auf ferne Straßen** (München → 592 km Snap im
   Hamburg-Extrakt). Jede Koordinate muss gegen `MATCH_MAX_SNAP_DISTANCE_M` geprüft werden.
 - GNU Make 3.81 (macOS): keine Make-4-Features. Kein `sed -i` in Skripten (macOS/Linux verschieden).
-- **Docker Desktop (macOS) sieht nicht jeden Pfad:** Ein Bind-Mount aus dem Scratchpad (`/private/tmp/claude-501/…`) oder `$TMPDIR` ist im Container **leer**
+- **Docker unter macOS sieht nicht jeden Pfad** (Colima spiegelt nur `$HOME` in die VM; Docker Desktop nur die freigegebenen Pfade): Ein Bind-Mount aus dem Scratchpad (`/private/tmp/claude-501/…`) oder `$TMPDIR` ist im Container **leer**
   (`osrm-extract: Input file /data/map.osm.pbf not found`, obwohl die Datei auf dem Host liegt). Compose-Läufe mit Bind-Mounts (z. B. `make osrm-prepare`) im Repo oder in einer
   Kopie unter `~/.cache/…` ausführen, nicht im Scratchpad.
 - `env_file: .env` in `docker-compose.yml` ist Pflicht: Ohne `.env` bricht `docker compose` ab (auch `config`).

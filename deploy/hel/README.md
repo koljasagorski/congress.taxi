@@ -1,6 +1,6 @@
 # Betrieb auf dem Proxmox-Wirt `hel` (congress.sgr.ski)
 
-Stand **2026-11-11**: Der Gesamtstand (db, osrm **Deutschland**-Extrakt, api, web, cleanup; Commit `edc9627`) läuft in **CT 220 `congress`**
+Stand **2026-11-11**: Der Gesamtstand (db, osrm **Deutschland**-Extrakt, api, web, cleanup; Commit `eb777c1`, mit Adresssuche) läuft in **CT 220 `congress`**
 und ist unter https://congress.sgr.ski erreichbar (seit dem 10.11. nur die API-Liveness, seit dem 11.11. mit Oberfläche).
 Der Wirt und der Rand gehören zur Infrastruktur im Repository `patchletter.com` (`deploy/hel/`, dort
 `README.md` und `sgr/README.md`) – **dort nachlesen, nicht raten**. Keine Zugangsdaten, Schlüssel oder
@@ -132,6 +132,11 @@ Angelegt über den Cloudflare-MCP am 2026-11-10.
 | Rand | `caddy validate` ok, `caddy reload` ohne Neustart; `m.sgr.ski` 200, `dns.sgr.ski` 200 danach |
 | Öffentlich | `/` 200 mit CSP, Referrer-Policy, HSTS, `X-Frame-Options`, ohne `Server`; JS/CSS/SVG 200; SPA-Unterpfad 200; `/api/config` 200; `/api/health/ready` 404; `/api/docs` 404 |
 | Rand-Log | nach dem Reload nur der Admin-Eintrag von `127.0.0.1`, keine Besucher-IP |
+
+**Adresssuche ausgerollt (2026-11-11, Commit `eb777c1`, Betreiberfreigabe „ausrollen“):** CI grün; `ausrollen.sh` per SSH (eine Sitzung), `.env` bekam
+`GEOCODER=nominatim`; Stack nach dem Neustart healthy. Prüfung von außen: `/api/config` meldet `map.geocoder=nominatim`, `/api/geocode` ohne Anmeldung **401**,
+das ausgelieferte Bundle enthält `/api/geocode`; vom Gast aus liefert `nominatim.openstreetmap.org` (Kennung der App) Treffer. **Nicht geprüft:** eine Suche
+als angemeldete Person im Browser (kein Konto auf Produktion angelegt), Last. Abschalten: `GEOCODER=none sh deploy/hel/ausrollen.sh` auf dem Gast.
 
 **Nicht geprüft:** Last/Dauerbetrieb (auch RAM von `osrm-routed` unter Last); die Oberfläche im Browser auf hel (Playwright-Erweiterung
 nicht verfügbar; nur HTTP-Prüfung, keine Konten auf Produktion angelegt); IPv6 von außen (der Mac hat kein IPv6).

@@ -11,9 +11,9 @@ Siehe Phasen-Checkliste in `PLAN.md`. Jede Phase = ein Conventional-Commit, grü
 Nicht behobene niedrige Befunde und alle Betreiberentscheidungen stehen vollständig in `README.md` („Bekannte Grenzen und offene Punkte“) und `PLAN.md`
 („Offene Fragen für den Betreiber“) – dort weiterarbeiten, nicht hier duplizieren. Wichtigste offene Punkte: Platzhalter (Ort/Datum, Impressum, Datenschutztexte in
 `web/src/i18n/de.ts`), Tile-Server, SMTP/E-Mail-Verifikation, PBS/Backup auf hel, Oberfläche mit `docs/DATENSCHUTZ.md` angleichen.
-**Adresssuche (2026-11-11, im Repo, auf hel noch nicht eingeschaltet/ausgerollt):** `GET /api/geocode` (serverseitiger Nominatim-Proxy, `GEOCODER=nominatim`,
+**Adresssuche (2026-11-11, auf hel seit Commit `eb777c1` eingeschaltet):** `GET /api/geocode` (serverseitiger Nominatim-Proxy, `GEOCODER=nominatim`,
 Standard `none`), Suchfeld im `PointPicker`; Doku in `README.md` („Adresssuche“), `docs/API-CONTRACT.md`, `docs/DATENSCHUTZ.md` (V3a). Der Browser fragt nie einen Geocoder direkt;
-der Cache ist je Nutzer getrennt (sonst Zeitkanal). Einschalten auf hel nur nach Betreiberfreigabe.
+der Cache ist je Nutzer getrennt (sonst Zeitkanal). Abschalten: `GEOCODER=none sh deploy/hel/ausrollen.sh` (siehe `deploy/hel/README.md`).
 Auf hel ist seit 2026-11-11 Commit `edd0c2d` ausgerollt (inkl. Oberfläche und aller Audit-Fixes); danach gepushte Commits sind es nur, wenn `deploy/hel/README.md` es nennt.
 
 ## Befehle

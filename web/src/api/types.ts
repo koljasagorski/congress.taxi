@@ -5,6 +5,13 @@ export interface LatLon {
   lon: number;
 }
 
+/** Treffer der Adresssuche (GET /api/geocode) */
+export interface GeocodeItem {
+  label: string;
+  lat: number;
+  lon: number;
+}
+
 /** Routenlinie als [[lat, lon], …] */
 export type RoutePoints = [number, number][];
 

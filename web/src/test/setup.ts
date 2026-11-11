@@ -23,12 +23,23 @@ vi.mock("../components/MapView", async () => {
       tileUrl: string;
       attribution: string;
       maxZoom?: number;
-      ref?: React.Ref<{ getCenter(): { lat: number; lon: number } }>;
+      ref?: React.Ref<{ getCenter(): { lat: number; lon: number }; focus(p: { lat: number; lon: number }): void }>;
     }) {
-      React.useImperativeHandle(props.ref, () => ({ getCenter: () => ({ lat: 53.6, lon: 10.0 }) }), []);
+      const el = React.useRef<HTMLDivElement | null>(null);
+      React.useImperativeHandle(
+        props.ref,
+        () => ({
+          getCenter: () => ({ lat: 53.6, lon: 10.0 }),
+          // Die Attrappe merkt sich den letzten Fokus im DOM, damit Tests ihn prüfen können.
+          focus: (p) => {
+            if (el.current) el.current.dataset.focus = `${p.lat},${p.lon}`;
+          },
+        }),
+        [],
+      );
       return React.createElement(
         "div",
-        { role: "region", "aria-label": props.ariaLabel, "data-testid": "map", "data-tile-url": props.tileUrl, "data-attribution": props.attribution, "data-max-zoom": String(props.maxZoom ?? 19) },
+        { ref: el, role: "region", "aria-label": props.ariaLabel, "data-testid": "map", "data-tile-url": props.tileUrl, "data-attribution": props.attribution, "data-max-zoom": String(props.maxZoom ?? 19) },
         props.onPick
           ? React.createElement(
               "button",

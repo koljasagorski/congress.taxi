@@ -168,6 +168,7 @@ function OfferRideForm({ config }: { config: PublicConfig }) {
           attribution={config.map.attribution}
           eventPosition={eventPosition}
           eventName={config.event.name}
+          geocoderId={config.map.geocoder}
           pointKind="start"
           pointLabel={t("map.markerStart")}
           error={pointError ?? errors.start}

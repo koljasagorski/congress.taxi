@@ -206,6 +206,7 @@ function SearchRideForm({ config }: { config: PublicConfig }) {
           attribution={config.map.attribution}
           eventPosition={eventPosition}
           eventName={config.event.name}
+          geocoderId={config.map.geocoder}
           pointKind="pickup"
           pointLabel={t("map.markerPickup")}
           routes={routes}

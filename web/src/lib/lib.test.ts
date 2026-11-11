@@ -176,13 +176,30 @@ describe("Hilfsfunktionen", () => {
 });
 
 describe("Geocoder-Adapter", () => {
-  it("liefert für alle Konfigurationswerte die Standardimplementierung none", async () => {
-    for (const id of ["none", "photon", "nominatim"]) {
+  it("liefert für none und das nicht angebundene photon die Attrappe ohne Adresssuche", async () => {
+    for (const id of ["none", "photon", "unbekannt"]) {
       const geocoder = createGeocoder(id);
       expect(geocoder.id).toBe("none");
       expect(geocoder.available).toBe(false);
       await expect(geocoder.search("Hamburg")).resolves.toEqual([]);
     }
+  });
+
+  it("nominatim fragt den eigenen Backend-Endpunkt, nie einen fremden Dienst", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe("/api/geocode?q=Marktstra%C3%9Fe+5");
+      return new Response(JSON.stringify({ items: [{ label: "Marktstraße 5", lat: 53.5, lon: 9.9 }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const geocoder = createGeocoder("nominatim");
+    expect(geocoder.available).toBe(true);
+    await expect(geocoder.search("Marktstraße 5")).resolves.toEqual([
+      { label: "Marktstraße 5", position: { lat: 53.5, lon: 9.9 } },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

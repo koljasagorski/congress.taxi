@@ -1,13 +1,12 @@
 // Geocoder-Adapter (Adressen -> Koordinaten).
 //
-// Bewusst NUR die Schnittstelle und die Standardimplementierung "none": Ein Geocoder wie
-// Photon oder Nominatim wäre aus dem Browser ein externer Request, der Eingaben (Adressen!) und
-// die IP-Adresse an Dritte sendet. Das verbietet das Datenschutzkonzept, solange es keinen
-// Backend-Proxy gibt. Die Ortswahl geschieht deshalb per Karten-Klick, Kartenmitte oder Koordinaten.
-//
-// Einen echten Adapter anzubinden bedeutet: Backend-Endpunkt (Proxy) schaffen, hier eine Klasse
-// ergänzen, in createGeocoder() registrieren und in der CSP/Datenschutzerklärung nachführen.
+// Der Browser fragt NIE einen Geocoder-Dienst direkt: Das würde Adresseingaben und die IP-Adresse
+// an Dritte senden. Stattdessen fragt "nominatim" den eigenen Backend-Endpunkt GET /api/geocode,
+// der den Dienst serverseitig aufruft (siehe api/app/geocoding.py). "none" und "photon" (nicht
+// angebunden) schalten die Adresssuche in der Oberfläche aus; Karten-Klick, Kartenmitte und
+// Koordinaten funktionieren immer.
 
+import { endpoints } from "../api/endpoints";
 import type { LatLon } from "../api/types";
 
 export interface GeocodeResult {
@@ -30,8 +29,17 @@ export class NoneGeocoder implements Geocoder {
   }
 }
 
-/** "photon" und "nominatim" (laut /api/config möglich) sind nicht angebunden und liefern "none". */
-export function createGeocoder(_id: string): Geocoder {
-  void _id;
-  return new NoneGeocoder();
+/** Adresssuche über den Backend-Proxy (Nominatim). */
+export class ApiGeocoder implements Geocoder {
+  readonly id = "nominatim";
+  readonly available = true;
+  async search(query: string, signal?: AbortSignal): Promise<GeocodeResult[]> {
+    const { items } = await endpoints.geocode(query, signal);
+    return items.map((item) => ({ label: item.label, position: { lat: item.lat, lon: item.lon } }));
+  }
+}
+
+/** "photon" ist nicht angebunden und wirkt wie "none". */
+export function createGeocoder(id: string): Geocoder {
+  return id === "nominatim" ? new ApiGeocoder() : new NoneGeocoder();
 }

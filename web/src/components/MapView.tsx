@@ -26,7 +26,12 @@ export interface MapRoute {
 
 export interface MapViewHandle {
   getCenter(): LatLon;
+  /** Zentriert die Karte auf einen Punkt (z. B. nach der Adresssuche), höchstens bis maxZoom. */
+  focus(point: LatLon): void;
 }
+
+/** Zoomstufe, auf die `focus` hineinzoomt (Straßenebene; nie über maxZoom). */
+const FOCUS_ZOOM = 15;
 
 export interface MapViewProps {
   tileUrl: string;
@@ -103,8 +108,14 @@ export function MapView({
         const c = mapRef.current?.getCenter();
         return c ? { lat: round5(c.lat), lon: round5(c.lng) } : initialView.current.center;
       },
+      focus: (point) => {
+        const map = mapRef.current;
+        if (!map) return;
+        const zoom = Math.min(Math.max(map.getZoom(), FOCUS_ZOOM), maxZoom);
+        map.setView([point.lat, point.lon], zoom, { animate: !prefersReducedMotion() });
+      },
     }),
-    [],
+    [maxZoom],
   );
 
   // Karte einmalig anlegen (bzw. neu, wenn sich die Tile-URL ändert).

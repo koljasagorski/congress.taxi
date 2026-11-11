@@ -1,5 +1,16 @@
-import { useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type Ref } from "react";
+import {
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type Ref,
+} from "react";
+import { ApiError } from "../api/client";
 import type { LatLon } from "../api/types";
+import { createGeocoder, type GeocodeResult } from "../geocoder";
 import { useI18n } from "../i18n";
 import { formatCoord, isValidLatLon, parseDecimal } from "../lib/format";
 import { MapView, type MapMarker, type MapRoute, type MapViewHandle } from "./MapView";
@@ -24,6 +35,8 @@ interface PointPickerProps {
   attribution: string;
   eventPosition: LatLon;
   eventName: string;
+  /** Geocoder aus GET /api/config (`map.geocoder`); bei "none" gibt es keine Adresssuche. */
+  geocoderId?: string;
   pointKind: "start" | "pickup";
   pointLabel: string;
   routes?: MapRoute[];
@@ -36,8 +49,21 @@ interface PointPickerProps {
 /** Bei der Punktwahl nicht tiefer als Straßenebene zoomen: Kachelabrufe verraten den Ausschnitt an den Kartenserver. */
 export const PICK_MAX_ZOOM = 16;
 
+/** Mindestlänge des Suchtexts (wie der Server). */
+const MIN_QUERY_LENGTH = 3;
+
+type SearchState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "results"; items: GeocodeResult[] }
+  | { kind: "empty" }
+  | { kind: "tooShort" }
+  | { kind: "picked"; label: string }
+  | { kind: "error"; message: "map.searchBusy" | "map.searchFailed" };
+
 /**
- * Punktwahl: Klick auf die Karte ODER Koordinateneingabe ODER Kartenmitte (Tastatur-Alternative).
+ * Punktwahl: Adresssuche (optional) ODER Klick auf die Karte ODER Koordinateneingabe ODER
+ * Kartenmitte (Tastatur-Alternative).
  */
 export function PointPicker({
   legend,
@@ -47,6 +73,7 @@ export function PointPicker({
   attribution,
   eventPosition,
   eventName,
+  geocoderId = "none",
   pointKind,
   pointLabel,
   routes,
@@ -59,6 +86,47 @@ export function PointPicker({
   const uid = useId();
   const errorId = `${uid}-error`;
   const coordErrorId = `${uid}-coord-error`;
+
+  const geocoder = useMemo(() => createGeocoder(geocoderId), [geocoderId]);
+  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState<SearchState>({ kind: "idle" });
+  const searchAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => searchAbort.current?.abort(), []);
+
+  const runSearch = async () => {
+    const text = query.trim();
+    searchAbort.current?.abort();
+    if (text.length < MIN_QUERY_LENGTH) {
+      setSearch({ kind: "tooShort" });
+      return;
+    }
+    const controller = new AbortController();
+    searchAbort.current = controller;
+    setSearch({ kind: "loading" });
+    try {
+      const items = await geocoder.search(text, controller.signal);
+      if (controller.signal.aborted) return;
+      setSearch(items.length > 0 ? { kind: "results", items } : { kind: "empty" });
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      const busy =
+        err instanceof ApiError && (err.code === "geocoder_busy" || err.code === "rate_limited");
+      setSearch({ kind: "error", message: busy ? "map.searchBusy" : "map.searchFailed" });
+    }
+  };
+
+  const pickResult = (item: GeocodeResult) => {
+    onChange(item.position);
+    mapRef.current?.focus(item.position);
+    setSearch({ kind: "picked", label: item.label });
+  };
+
+  const onSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault(); // nie das umgebende Formular absenden
+      void runSearch();
+    }
+  };
 
   const [latText, setLatText] = useState(value ? String(value.lat) : "");
   const [lonText, setLonText] = useState(value ? String(value.lon) : "");
@@ -119,6 +187,60 @@ export function PointPicker({
   return (
     <fieldset className="point-picker" aria-describedby={describedBy || undefined}>
       <legend>{legend}</legend>
+      {geocoder.available && (
+        <div role="group" aria-label={t("map.searchGroup")} className="geo-search">
+          <div className="field">
+            <label htmlFor={`${uid}-search`}>{t("map.searchLabel")}</label>
+            <div className="geo-search-row">
+              <input
+                id={`${uid}-search`}
+                type="search"
+                autoComplete="off"
+                maxLength={200}
+                placeholder={t("map.searchPlaceholder")}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onSearchKeyDown}
+                aria-describedby={`${uid}-search-help`}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={search.kind === "loading"}
+                onClick={() => void runSearch()}
+              >
+                {t("map.searchButton")}
+              </button>
+            </div>
+          </div>
+          <p id={`${uid}-search-help`} className="hint">
+            {t("map.searchHelp")} {t("map.searchPrivacy")}
+          </p>
+          <div role="status" aria-live="polite" className="geo-status">
+            {search.kind === "loading" && <p className="hint">{t("map.searchLoading")}</p>}
+            {search.kind === "tooShort" && <p className="field-error">{t("map.searchTooShort")}</p>}
+            {search.kind === "empty" && <p className="hint">{t("map.searchNoResults")}</p>}
+            {search.kind === "error" && <p className="field-error">{t(search.message)}</p>}
+            {search.kind === "picked" && (
+              <p className="hint">{t("map.searchPicked", { label: search.label })}</p>
+            )}
+            {search.kind === "results" && (
+              <p className="hint">{t("map.searchResults", { count: search.items.length })}</p>
+            )}
+          </div>
+          {search.kind === "results" && (
+            <ul className="geo-results" aria-label={t("map.searchResultsList")}>
+              {search.items.map((item, i) => (
+                <li key={`${i}-${item.position.lat}-${item.position.lon}`}>
+                  <button type="button" className="geo-result" onClick={() => pickResult(item)}>
+                    {item.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       <p className="hint">{t("map.clickHint")}</p>
       <MapView
         ref={mapRef}

@@ -2,6 +2,7 @@
 
 import { api } from "./client";
 import type {
+  GeocodeItem,
   LatLon,
   LoginUser,
   MatchResponse,
@@ -16,6 +17,9 @@ import type {
 
 export const endpoints = {
   config: (signal?: AbortSignal) => api.get<PublicConfig>("/api/config", { signal }),
+
+  geocode: (q: string, signal?: AbortSignal) =>
+    api.get<{ items: GeocodeItem[] }>("/api/geocode", { query: { q }, signal }),
 
   register: (body: RegisterBody) => api.post<{ message: string }>("/api/auth/register", body),
   login: (email: string, password: string) =>

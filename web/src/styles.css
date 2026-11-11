@@ -236,6 +236,7 @@ a {
   font-weight: 600;
 }
 input[type="text"],
+input[type="search"],
 input[type="email"],
 input[type="password"],
 input[type="number"],
@@ -504,6 +505,42 @@ legend {
 }
 .marker-event {
   filter: hue-rotate(160deg) saturate(1.4);
+}
+.geo-search {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.geo-search-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+.geo-search-row input {
+  flex: 1;
+  min-width: 0;
+}
+.geo-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.geo-result {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border-ui);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+.geo-result:hover,
+.geo-result:focus-visible {
+  background: var(--bg-alt);
 }
 .coords-fields {
   display: grid;

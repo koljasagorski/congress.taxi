@@ -55,6 +55,7 @@ async def test_prefilter_can_use_the_gist_index(db: Any) -> None:
         time_to=future(100),
         min_seats=1,
         max_candidates=30,
+        max_per_driver=5,
         trim_m=1000,
     )
     async with get_sessionmaker()() as session:

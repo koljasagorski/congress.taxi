@@ -62,6 +62,7 @@ export const de = {
   "error.detour_too_large": "Der Umweg für diese Fahrt wäre zu groß.",
   "error.invalid_state": "Der Status hat sich inzwischen geändert. Die Liste wurde aktualisiert.",
   "error.has_accepted_requests": "Solange Anfragen angenommen sind, kann die Abfahrtszeit nicht geändert werden.",
+  "error.too_many_open_rides": "Du hast bereits die höchstmögliche Zahl offener Fahrten. Storniere eine Fahrt oder warte, bis sie abgefahren ist.",
   "error.seats_below_accepted": "Es sind bereits mehr Plätze vergeben.",
   "error.unknown": "Es ist ein unerwarteter Fehler aufgetreten.",
   "error.fieldInvalid": "Dieses Feld ist ungültig.",

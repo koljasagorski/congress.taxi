@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.errors import ApiError
-from app.models import Ride, RideRequest
+from app.models import Ride, RideRequest, User
 from app.routing import LatLon, RoutingClient
 from app.schemas.common import Coordinate, Page
 from app.schemas.rides import RideCreate, RideOut, RidePatch
@@ -178,6 +178,32 @@ async def create_ride(
     line = build_line(route.geometry, start, event)
 
     try:
+        # Obergrenze offener Fahrten (SEC-1). Die Nutzerzeile wird gesperrt (``FOR NO KEY UPDATE``:
+        # blockiert nur andere Anleger desselben Fahrers, nicht die Fremdschlüssel-Prüfung anderer
+        # Tabellen), damit parallele Anlagen die Grenze nicht gemeinsam überschreiten.
+        locked = await session.scalar(
+            select(User.id).where(User.id == driver_id).with_for_update(key_share=True)
+        )
+        if locked is None:  # Konto wurde gelöscht, während OSRM antwortete
+            await session.rollback()
+            raise ApiError(401, "unauthorized", "Anmeldung erforderlich")
+        open_count = await session.scalar(
+            select(func.count())
+            .select_from(Ride)
+            .where(
+                Ride.driver_id == driver_id,
+                Ride.status.in_(("open", "full")),
+                Ride.departure_time > func.now(),
+            )
+        )
+        if (open_count or 0) >= settings.max_open_rides_per_driver:
+            await session.rollback()
+            raise ApiError(
+                409,
+                "too_many_open_rides",
+                f"Es sind höchstens {settings.max_open_rides_per_driver} offene Fahrten "
+                "gleichzeitig möglich. Storniere eine Fahrt oder warte, bis sie abgefahren ist.",
+            )
         ride_id = await session.scalar(
             insert(Ride)
             .values(

@@ -70,7 +70,7 @@ ist laut Tile Usage Policy nur für Entwicklung gedacht; `TILE_URL` bleibt frei 
 
 | Methode & Pfad | Body / Query | Erfolg | Fehler |
 |---|---|---|---|
-| `POST /api/rides` | `{start{lat,lon}, departure_time, seats}` | **201** RideOut | 422 `validation_error` (`departure_time` in der Zukunft, `seats` 1–8) · 422 `outside_coverage` (Start oder Event nicht nahe einer Straße im Extrakt, `snap_or_error`) · 422 `no_route` · 429 (`rate_limit_rides_create_per_hour`, **je Nutzer**) · 503 `routing_unavailable` |
+| `POST /api/rides` | `{start{lat,lon}, departure_time, seats}` | **201** RideOut | 422 `validation_error` (`departure_time` in der Zukunft, `seats` 1–8) · 422 `outside_coverage` (Start oder Event nicht nahe einer Straße im Extrakt, `snap_or_error`) · 422 `no_route` · 409 `too_many_open_rides` (bereits `MAX_OPEN_RIDES_PER_DRIVER` = 5 offene/volle, noch nicht abgefahrene Fahrten) · 429 (`rate_limit_rides_create_per_hour`, **je Nutzer**) · 503 `routing_unavailable` |
 | `GET /api/rides/mine` | `limit` (1–100, Standard 50), `offset` | 200 `Page[RideOut]` (`{items,total,limit,offset}`), neueste Abfahrt zuerst | 422 |
 | `PATCH /api/rides/{id}` | optional `{departure_time, seats_total}` | 200 RideOut | 404 · 409 `has_accepted_requests` (Abfahrtszeit ändern, solange angenommene Anfragen existieren) · 409 `seats_below_accepted` (`seats_total` < angenommene) · 409 `ride_cancelled` · 422 |
 | `DELETE /api/rides/{id}` | – | **204**; Fahrt → `cancelled`; alle `pending`/`accepted`-Anfragen → `cancelled` (`decided_at` gesetzt) | 404 |
@@ -101,7 +101,8 @@ Umsetzung Phase 3 (Klarstellungen, keine Abweichung von den Pfaden/Formen):
 Ablauf wörtlich nach Auftrag: (1) Pickup per `snap_or_error` prüfen · (2) SQL-Vorfilter
 `ST_DWithin(route_geom, pickup::geography, MATCH_PREFILTER_RADIUS_M)` + `status='open'`,
 `seats_available >= min_seats`, `departure_time` im Fenster (Standard: ab jetzt; ohne `time_to` offen),
-**eigene Fahrten ausgeschlossen**; Kandidaten nach Luftlinie sortiert, auf `MATCH_MAX_CANDIDATES` begrenzt ·
+**eigene Fahrten ausgeschlossen**; Kandidaten nach Luftlinie sortiert, **je Fahrer** auf die nächsten
+`MATCH_MAX_CANDIDATES_PER_DRIVER` (Standard 2) und insgesamt auf `MATCH_MAX_CANDIDATES` (30) begrenzt ·
 (3) pro Kandidat `compute_detour` (parallel, begrenzt, z. B. `asyncio.Semaphore(8)`) · (4) Filter `acceptable` ·
 (5) Sortierung: kleinster Umweg, dann früheste Abfahrt.
 
@@ -129,6 +130,14 @@ die ungekürzte Route. Wer viele Abholpunkte abfragt, kann aus „Treffer ja/nei
 grob (größenordnungsmäßig einige hundert Meter bis wenige km, je nach Rundung) eingrenzen. Gegenmaßnahmen: Anmeldepflicht,
 gröbere Ausgabe (s. o.), Rate-Limit `RATE_LIMIT_MATCH_PER_MIN` (Phase 7) – Abtasten wird gebremst, nicht verhindert.
 Details: Docstring `app/services/matching.py`, `PLAN.md` Annahme 18.
+
+**Bekannte Grenze (Scheinfahrten, SEC-1):** Gegen das Verdrängen echter Fahrten aus den `MATCH_MAX_CANDIDATES` Plätzen gibt es
+zwei Sperren: höchstens `MAX_OPEN_RIDES_PER_DRIVER` (5) offene/volle, noch nicht abgefahrene Fahrten je Fahrer (`POST /api/rides`
+→ 409 `too_many_open_rides`; die Nutzerzeile wird dabei gesperrt, parallele Anlagen überschreiten die Grenze nicht) und höchstens
+`MATCH_MAX_CANDIDATES_PER_DRIVER` (2) Kandidaten je Fahrer. Ein Konto belegt damit höchstens 2 der 30 Plätze. Es **bleibt
+möglich**, mit vielen Konten (je 1 Scheinfahrt exakt am Abholpunkt) die Plätze zu füllen: Registrierung ist auf 10/h je IP
+begrenzt, eine E-Mail-Bestätigung gibt es nicht (sie bräuchte SMTP – Entscheidung des Betreibers). Wirksam bleibt dann nur
+Beobachtung und manuelles Löschen von Konten; PLAN.md, Annahme 20.
 
 **Demo-Daten:** `make seed-demo` (`scripts/seed_demo.py`) legt über die laufende API Demo-Konten (`@demo.invalid`, nur
 außerhalb von `APP_ENV=production` registrierbar) und Fahrten an; verweigert Produktion und Nicht-Loopback-Ziele.

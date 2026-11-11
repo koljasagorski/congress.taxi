@@ -178,12 +178,13 @@ async def test_detour_mode_any_vs_all_with_real_numbers(
 
 async def test_sorted_by_real_detour(live: httpx.AsyncClient, db: Any, osrm: SpyOsrm) -> None:
     """Pickup Altona: Harburg (≈ 11 min) liegt klar vor Poppenbüttel und Bergedorf (je ≈ 18 min)."""
-    driver = await create_user(db)
     rider = await create_user(db)
+    # Je Fahrt ein eigener Fahrer (Kandidatenlimit je Fahrer, SEC-1).
     # Abfahrten absichtlich in umgekehrter Reihenfolge – der Umweg entscheidet
-    bergedorf, _ = await real_ride(db, osrm, driver["id"], BERGEDORF, departure_time=future(5))
-    poppen, _ = await real_ride(db, osrm, driver["id"], POPPENBUETTEL, departure_time=future(10))
-    harburg, _ = await real_ride(db, osrm, driver["id"], HARBURG, departure_time=future(15))
+    d1, d2, d3 = [await create_user(db) for _ in range(3)]
+    bergedorf, _ = await real_ride(db, osrm, d1["id"], BERGEDORF, departure_time=future(5))
+    poppen, _ = await real_ride(db, osrm, d2["id"], POPPENBUETTEL, departure_time=future(10))
+    harburg, _ = await real_ride(db, osrm, d3["id"], HARBURG, departure_time=future(15))
     with override_settings(**DEFAULTS):
         r = await match(live, rider, ALTONA)
     items = r.json()["items"]

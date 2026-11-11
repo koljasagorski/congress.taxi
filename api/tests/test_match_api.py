@@ -33,6 +33,11 @@ ITEM_KEYS = {
 }
 
 
+async def driver_id(db: Any) -> Any:
+    """Neuer Fahrer je Fahrt: Das Kandidatenlimit je Fahrer (SEC-1) soll hier nicht eingreifen."""
+    return (await create_user(db))["id"]
+
+
 async def match(
     client: httpx.AsyncClient, user: dict[str, Any], pickup: LatLon = MID_NORTH_EVENT, **params: Any
 ) -> httpx.Response:
@@ -156,10 +161,9 @@ class RouteDown(FakeRouting):
 async def test_route_failure_after_successful_snap_is_503(
     client: httpx.AsyncClient, db: Any, routing: FakeRouting
 ) -> None:
-    driver = await create_user(db)
     rider = await create_user(db)
     for _ in range(20):
-        await add_ride(db, driver["id"])
+        await add_ride(db, await driver_id(db))
     down = RouteDown()
     app.dependency_overrides[get_routing_client] = lambda: down
     r = await match(client, rider)
@@ -267,11 +271,10 @@ async def test_min_seats(client: httpx.AsyncClient, db: Any, routing: FakeRoutin
 
 
 async def test_time_window(client: httpx.AsyncClient, db: Any, routing: FakeRouting) -> None:
-    driver = await create_user(db)
     rider = await create_user(db)
-    early = await add_ride(db, driver["id"], departure_time=future(5))
-    mid = await add_ride(db, driver["id"], departure_time=future(10))
-    late = await add_ride(db, driver["id"], departure_time=future(20))
+    early = await add_ride(db, await driver_id(db), departure_time=future(5))
+    mid = await add_ride(db, await driver_id(db), departure_time=future(10))
+    late = await add_ride(db, await driver_id(db), departure_time=future(20))
 
     async def ids(**params: Any) -> set[str]:
         r = await match(client, rider, **params)
@@ -311,14 +314,15 @@ async def test_prefilter_radius_excludes_far_rides_before_any_routing(
 async def test_candidate_limit_keeps_the_nearest_by_beeline(
     client: httpx.AsyncClient, db: Any, routing: FakeRouting
 ) -> None:
-    driver = await create_user(db)
+    # Je Fahrt ein eigener Fahrer: Das Kandidatenlimit je Fahrer (SEC-1) greift hier nicht.
+    drivers = [await create_user(db) for _ in range(6)]
     rider = await create_user(db)
     starts = [(53.75, 9.95 + 0.03 * k) for k in range(6)]  # zunehmend seitlich der Pickup-Linie
     # Abfahrtszeit und Einfügereihenfolge laufen GEGEN die Entfernung: Die nächste Fahrt fährt
     # zuletzt, die fernste zuerst. Nur eine echte Luftlinien-Sortierung wählt dann die 3 nächsten;
     # ein Tiebreaker nach Abfahrtszeit oder Einfügereihenfolge würde die 3 fernsten wählen.
     for k in reversed(range(6)):
-        await add_ride(db, driver["id"], start=starts[k], departure_time=future(24 + (5 - k)))
+        await add_ride(db, drivers[k]["id"], start=starts[k], departure_time=future(24 + (5 - k)))
     probe = FakeRouting()
     app.dependency_overrides[get_routing_client] = lambda: probe
     with override_settings(
@@ -337,14 +341,47 @@ async def test_candidate_limit_keeps_the_nearest_by_beeline(
         assert not any(haversine_m(s, w) < 5 for w in routed_starts)
 
 
+async def test_decoy_rides_of_one_driver_do_not_crowd_out_real_drivers(
+    client: httpx.AsyncClient, db: Any, routing: FakeRouting
+) -> None:
+    """SEC-1: Viele Fahrten mit Start exakt am Abholpunkt dürfen echte Fahrer nicht verdrängen."""
+    attacker = await create_user(db, display_name="Angreifer")
+    real = await create_user(db, display_name="EchterFahrer")
+    rider = await create_user(db)
+    await add_ride(db, real["id"], start=NORTH, departure_time=future(26))
+    for k in range(35):  # Start = Abholpunkt (Luftlinie 0), mehr als MATCH_MAX_CANDIDATES (30)
+        await add_ride(db, attacker["id"], start=MID_NORTH_EVENT, departure_time=future(24 + k))
+    r = await match(client, rider, MID_NORTH_EVENT, limit=50)
+    assert r.status_code == 200, r.text
+    names = [item["driver_display_name"] for item in r.json()["items"]]
+    assert "EchterFahrer" in names
+    assert names.count("Angreifer") == 2  # MATCH_MAX_CANDIDATES_PER_DRIVER (Standard 2)
+
+
+async def test_per_driver_candidate_limit_keeps_the_nearest_rides_of_that_driver(
+    client: httpx.AsyncClient, db: Any, routing: FakeRouting
+) -> None:
+    driver = await create_user(db)
+    rider = await create_user(db)
+    far = await add_ride(db, driver["id"], start=NORTH, departure_time=future(24))
+    near_late = await add_ride(db, driver["id"], start=MID_NORTH_EVENT, departure_time=future(30))
+    near_early = await add_ride(db, driver["id"], start=MID_NORTH_EVENT, departure_time=future(25))
+    with override_settings(match_max_candidates_per_driver=2):
+        r = await match(client, rider, MID_NORTH_EVENT)
+    ids = {item["ride_id"] for item in r.json()["items"]}
+    assert ids == {str(near_early), str(near_late)}, (ids, far)
+    with override_settings(match_max_candidates_per_driver=1):
+        r = await match(client, rider, MID_NORTH_EVENT)
+    assert {item["ride_id"] for item in r.json()["items"]} == {str(near_early)}
+
+
 async def test_no_db_transaction_is_held_while_waiting_for_osrm(
     client: httpx.AsyncClient, db: Any
 ) -> None:
     """Während der OSRM-Aufrufe hängt keine Pool-Verbindung als ``idle in transaction``."""
-    driver = await create_user(db)
     rider = await create_user(db)
     for _ in range(3):
-        await add_ride(db, driver["id"])
+        await add_ride(db, await driver_id(db))
     idle_seen: list[int] = []
     lock = asyncio.Lock()  # die asyncpg-Verbindung verträgt keine parallelen Abfragen
 
@@ -389,10 +426,9 @@ async def test_routing_fan_out_is_parallel_but_bounded(
             finally:
                 Slow.current -= 1
 
-    driver = await create_user(db)
     rider = await create_user(db)
     for _ in range(20):
-        await add_ride(db, driver["id"])
+        await add_ride(db, await driver_id(db))
     slow = Slow()
     app.dependency_overrides[get_routing_client] = lambda: slow
     r = await match(client, rider)
@@ -491,14 +527,15 @@ async def test_candidate_without_route_is_skipped_not_fatal(
 async def test_sorted_by_smallest_detour_then_earliest_departure(
     client: httpx.AsyncClient, db: Any, routing: FakeRouting
 ) -> None:
-    driver = await create_user(db)
     rider = await create_user(db)
     # wachsender Umweg über den Pickup; die Fahrt mit dem kleinsten Umweg fährt zuletzt ab
-    small = await add_ride(db, driver["id"], start=NORTH, departure_time=future(30))
-    medium = await add_ride(db, driver["id"], start=(53.75, 10.05), departure_time=future(20))
-    large = await add_ride(db, driver["id"], start=(53.75, 10.15), departure_time=future(10))
+    small = await add_ride(db, await driver_id(db), start=NORTH, departure_time=future(30))
+    medium = await add_ride(
+        db, await driver_id(db), start=(53.75, 10.05), departure_time=future(20)
+    )
+    large = await add_ride(db, await driver_id(db), start=(53.75, 10.15), departure_time=future(10))
     # gleicher Umweg wie ``small`` (gleiche Start-/Zielpunkte) – früher abfahrend
-    tie_early = await add_ride(db, driver["id"], start=NORTH, departure_time=future(15))
+    tie_early = await add_ride(db, await driver_id(db), start=NORTH, departure_time=future(15))
     with override_settings(
         match_prefilter_radius_m=50_000,
         match_max_detour_ratio=100.0,
@@ -515,10 +552,9 @@ async def test_sorted_by_smallest_detour_then_earliest_departure(
 async def test_limit_only_truncates_output_total_counts_all(
     client: httpx.AsyncClient, db: Any, routing: FakeRouting
 ) -> None:
-    driver = await create_user(db)
     rider = await create_user(db)
     for k in range(5):
-        await add_ride(db, driver["id"], departure_time=future(5 + k))
+        await add_ride(db, await driver_id(db), departure_time=future(5 + k))
     r = await match(client, rider, limit=2)
     body = r.json()
     assert body["total"] == 5 and len(body["items"]) == 2

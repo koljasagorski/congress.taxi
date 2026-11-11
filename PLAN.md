@@ -162,6 +162,18 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
     die CSP folgt `TILE_URL`. **Referrer-Policy:** SPA `strict-origin-when-cross-origin`, `/api` und Fehlerseiten `no-referrer`
     (Caddy setzt die Header je `handle`-Zweig; ein Site-weiter Block würde wegen `-Server` zurückgestellt laufen und `/api` überstimmen).
     Geocoder (Photon/Nominatim) sind bewusst nicht angebunden (externe Anfragen aus dem Browser).
+20. **Scheinfahrten und das Kandidatenlimit (SEC-1).** Die Kandidaten werden nach Luftlinie sortiert und auf
+    `MATCH_MAX_CANDIDATES` (30) gekürzt; ohne weitere Sperre könnte ein Konto mit ≥ 30 Fahrten exakt am Abholpunkt alle
+    Plätze belegen und echte Fahrer aus dem Ergebnis verdrängen. Sperren: (a) `MAX_OPEN_RIDES_PER_DRIVER` (5): offene oder
+    volle, noch nicht abgefahrene Fahrten je Fahrer, sonst `409 too_many_open_rides` (Nutzerzeile `FOR NO KEY UPDATE` gesperrt,
+    damit parallele Anlagen die Grenze nicht überschreiten); (b) `MATCH_MAX_CANDIDATES_PER_DRIVER` (2): je Fahrer kommen nur
+    die nächsten Fahrten in die Kandidatenliste (`row_number() OVER (PARTITION BY driver_id …)` im Vorfilter; der teure
+    Anzeigeroutenteil läuft erst für die Gewinner). Folge für echte Fahrer: Wer mehr als 2 Fahrten mit gleichem Start im
+    selben Zeitfenster anbietet, erscheint in der Suche mit den 2 frühesten; die übrigen sind über das Zeitfenster sichtbar.
+    **Verbleibende Grenze (bewusst hingenommen):** Mit mehreren Konten (je 1 Scheinfahrt am Abholpunkt) lassen sich die 30 Plätze
+    weiterhin füllen; Registrierung ist auf 10/h je IP begrenzt, eine E-Mail-Bestätigung fehlt (bräuchte SMTP → offene
+    Entscheidung des Betreibers, Annahme 6). Gegenmittel im Betrieb: Konten löschen/Zugang sperren, `MATCH_MAX_CANDIDATES`
+    erhöhen (mehr OSRM-Last je Suche).
 
 ## Offene Fragen (nicht blockierend)
 

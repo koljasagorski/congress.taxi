@@ -5,7 +5,8 @@ Ablauf (Vertrag, Abschnitt „Matching“):
 1. Pickup wird vom Aufrufer per ``snap_or_error`` geprüft.
 2. :func:`candidate_statement` – Vorfilter mit ``ST_DWithin`` auf der **nackten** Geography-Spalte
    ``route_geom`` (nur so ist der GiST-Index ``ix_rides_route_geom`` nutzbar), Status, freie Plätze,
-   Zeitfenster, fremde Fahrten; nach Luftlinie sortiert, auf ``MATCH_MAX_CANDIDATES`` begrenzt.
+   Zeitfenster, fremde Fahrten; nach Luftlinie sortiert, je Fahrer auf
+   ``MATCH_MAX_CANDIDATES_PER_DRIVER`` und insgesamt auf ``MATCH_MAX_CANDIDATES`` begrenzt.
 3. :func:`compute_detours` – pro Kandidat ``compute_detour`` (parallel, begrenzt). Gerouted wird
    Fahrer-Start → Pickup → **Zielpunkt der Fahrt** (``end_geom``, nicht ``EVENT_*``), weil
    ``route_distance_m`` gegen genau diesen Punkt gemessen wurde.
@@ -116,10 +117,48 @@ def candidate_statement(
     time_to: datetime | None,
     min_seats: int,
     max_candidates: int,
+    max_per_driver: int,
     trim_m: int,
 ) -> Select[Any]:
-    """Vorfilter-Statement (parametrisiert; exportiert, damit Tests den Plan prüfen können)."""
+    """Vorfilter-Statement (parametrisiert; exportiert, damit Tests den Plan prüfen können).
+
+    Zwei Stufen, damit die teuren Anzeige-Ausdrücke (Kürzen/Vereinfachen der Route) nur für die
+    höchstens ``max_candidates`` Gewinner berechnet werden:
+
+    1. ``ranked``: Vorfilter mit ``ST_DWithin`` auf der nackten Geography-Spalte (GiST-Index),
+       je Fahrer nach Luftlinie nummeriert (``row_number() OVER (PARTITION BY driver_id …)``).
+    2. ``chosen``: höchstens ``max_per_driver`` Fahrten je Fahrer, nach Luftlinie sortiert, auf
+       ``max_candidates`` begrenzt. Ein Konto mit vielen Fahrten am Abholpunkt belegt so höchstens
+       ``max_per_driver`` Plätze und verdrängt keine echten Fahrer (SEC-1).
+    """
     pickup_geog = func.ST_GeogFromText(point_wkt(pickup))
+    beeline = func.ST_Distance(Ride.route_geom, pickup_geog)
+    ranked_stmt = select(
+        Ride.id.label("ride_id"),
+        Ride.driver_id.label("driver_id"),
+        Ride.departure_time.label("departure_time"),
+        beeline.label("beeline_m"),
+        func.row_number()
+        .over(partition_by=Ride.driver_id, order_by=(beeline, Ride.departure_time, Ride.id))
+        .label("driver_rank"),
+    ).where(
+        func.ST_DWithin(Ride.route_geom, pickup_geog, radius_m),
+        Ride.status == "open",
+        Ride.seats_available >= min_seats,
+        Ride.departure_time >= time_from,
+        Ride.driver_id != user_id,
+    )
+    if time_to is not None:
+        ranked_stmt = ranked_stmt.where(Ride.departure_time <= time_to)
+    ranked = ranked_stmt.subquery("ranked")
+    chosen = (
+        select(ranked.c.ride_id, ranked.c.beeline_m, ranked.c.departure_time)
+        .where(ranked.c.driver_rank <= max_per_driver)
+        .order_by(ranked.c.beeline_m, ranked.c.departure_time, ranked.c.ride_id)
+        .limit(max_candidates)
+        .subquery("chosen")
+    )
+
     start = cast(Ride.start_geom, Geometry)
     end = cast(Ride.end_geom, Geometry)
     trimmed = trimmed_route_expression(trim_m)
@@ -127,7 +166,7 @@ def candidate_statement(
         simplified_route_geojson(trimmed),
         func.ST_AsGeoJSON(trimmed, 5),
     )
-    stmt = (
+    return (
         select(
             Ride.id.label("ride_id"),
             User.display_name.label("driver_display_name"),
@@ -141,20 +180,10 @@ def candidate_statement(
             Ride.route_duration_s,
             route_json.label("route_json"),
         )
+        .join(chosen, chosen.c.ride_id == Ride.id)
         .join(User, User.id == Ride.driver_id)
-        .where(
-            func.ST_DWithin(Ride.route_geom, pickup_geog, radius_m),
-            Ride.status == "open",
-            Ride.seats_available >= min_seats,
-            Ride.departure_time >= time_from,
-            Ride.driver_id != user_id,
-        )
+        .order_by(chosen.c.beeline_m, chosen.c.departure_time, chosen.c.ride_id)
     )
-    if time_to is not None:
-        stmt = stmt.where(Ride.departure_time <= time_to)
-    return stmt.order_by(
-        func.ST_Distance(Ride.route_geom, pickup_geog), Ride.departure_time, Ride.id
-    ).limit(max_candidates)
 
 
 def _route_to_latlon(route_json: str | None) -> list[list[float]]:
@@ -185,6 +214,7 @@ async def load_candidates(
         time_to=time_to,
         min_seats=min_seats,
         max_candidates=settings.match_max_candidates,
+        max_per_driver=settings.match_max_candidates_per_driver,
         trim_m=settings.match_route_trim_start_m,
     )
     rows = (await session.execute(stmt)).all()

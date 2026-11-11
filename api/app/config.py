@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     match_max_detour_minutes: float = Field(default=25.0, ge=0)
     match_detour_mode: Literal["any", "all"] = "any"
     match_max_candidates: int = Field(default=30, gt=0)
+    #: Höchstens so viele Fahrten **je Fahrer** gelangen in die Kandidatenliste (die nächsten nach
+    #: Luftlinie). Verhindert, dass ein Konto mit vielen Fahrten am Abholpunkt die
+    #: ``match_max_candidates`` Plätze allein belegt und echte Fahrer verdrängt.
+    match_max_candidates_per_driver: int = Field(default=2, gt=0)
+    #: Höchstens so viele offene/volle, noch nicht abgefahrene Fahrten je Fahrer (409
+    #: ``too_many_open_rides`` beim Anlegen).
+    max_open_rides_per_driver: int = Field(default=5, gt=0)
     match_max_snap_distance_m: int = Field(default=500, gt=0)
     #: Datenschutz: In Trefferlisten wird der Anfang der Fahrerroute abgeschnitten, damit die
     #: genaue Startposition (oft die Wohnung) nicht an Fremde geht. 0 = nicht kürzen.

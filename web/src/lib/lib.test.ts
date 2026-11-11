@@ -121,7 +121,7 @@ describe("API-Client", () => {
       "bad_request", "unauthorized", "forbidden", "not_found", "conflict", "validation_error", "rate_limited",
       "routing_unavailable", "internal_error", "outside_coverage", "no_route", "own_ride", "ride_full",
       "ride_departed", "ride_cancelled", "already_requested", "detour_too_large", "invalid_state",
-      "has_accepted_requests", "seats_below_accepted", "invalid_credentials", "payload_too_large",
+      "has_accepted_requests", "seats_below_accepted", "too_many_open_rides", "invalid_credentials", "payload_too_large",
     ];
     for (const code of codes) {
       expect(`error.${code}` in de, code).toBe(true);

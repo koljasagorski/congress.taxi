@@ -146,3 +146,19 @@ def test_docs_do_not_recommend_trusting_a_whole_docker_range() -> None:
     hel = (REPO / "deploy/hel/README.md").read_text()
     assert "TRUSTED_PROXIES=10.10.10.70" in hel
     assert "TRUSTED_PROXIES" in (REPO / "deploy/hel/ausrollen.sh").read_text()
+
+
+def test_osrm_does_not_log_request_urls(tmp_path: Path) -> None:
+    """osrm-routed protokolliert im Standard (INFO) jede Anfrage samt Koordinaten (DS-1).
+
+    Die URL enthält Fahrer-Start (= Wohnort) und Abholpunkte mit 6 Nachkommastellen; die Logs
+    liegen außerhalb der Retention. Mit ``-l WARNING`` (oder strenger) entfällt die Zeile.
+    """
+    cfg = render(tmp_path, BASE)
+    script = "\n".join(cfg["services"]["osrm"]["command"])
+    exec_lines = [ln for ln in script.splitlines() if ln.strip().startswith("exec osrm-routed")]
+    assert len(exec_lines) == 1, script
+    tokens = exec_lines[0].split()
+    assert "-l" in tokens or "--verbosity" in tokens, exec_lines[0]
+    level = tokens[(tokens.index("-l") if "-l" in tokens else tokens.index("--verbosity")) + 1]
+    assert level in {"WARNING", "ERROR", "NONE"}, level

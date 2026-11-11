@@ -50,7 +50,10 @@ services:
           sleep 20
           exit 1
         fi
-        exec osrm-routed --algorithm mld --ip 0.0.0.0 --port 5000 /data/map.osrm
+        # -l WARNING: Im Standard (INFO) schreibt osrm-routed jede Anfrage mit voller URL ins Log, also
+        # Fahrer-Start (= Wohnort) und Abholpunkte mit 6 Nachkommastellen samt Zeitstempel. Diese Logs
+        # lägen außerhalb der Retention (und in jeder Sicherung des Hosts). Nicht entfernen!
+        exec osrm-routed --algorithm mld --ip 0.0.0.0 --port 5000 -l WARNING /data/map.osrm
     healthcheck:
       # Das Image hat kein curl und OSRM keinen Health-Endpoint; ein Koordinaten-Request wäre
       # extrakt-abhängig (HTTP 400 bei NoSegment). Port-Check genügt als "Prozess läuft";

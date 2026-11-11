@@ -87,6 +87,11 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
    Uvicorn-Access-Log ist aus (`--no-access-log`); eigenes Request-Log schreibt nur
    Methode, Routen-Template, Status, Dauer – keine IP, kein Query. Caddy-Access-Log wird
    in Phase 7 entsprechend abgeschaltet/gefiltert.
+   **OSRM (DS-1):** `osrm-routed` protokolliert im Standard (INFO) jede Anfrage mit voller URL, also Fahrer-Start
+   (= Wohnort) und Abholpunkte mit 6 Nachkommastellen samt Zeitstempel, in das Container-Log (außerhalb der Retention, auf
+   hel in jeder Sicherung von CT 220). Daher startet der Container mit `-l WARNING`; `test_osrm_does_not_log_request_urls`
+   (`test_compose_config.py`) sichert das ab. Ein bereits laufender Container muss neu erstellt werden
+   (`docker compose up -d --force-recreate osrm`), damit alte Logs mit Koordinaten verschwinden.
 9. **Rate-Limit (Phase 7).** In-Memory, daher **ein** Uvicorn-Worker (dokumentierte Grenze). Echte
    Client-IP nur aus `X-Forwarded-For`, wenn der direkte Peer in `TRUSTED_PROXIES` steht – und dort steht
    **nur die feste Adresse des Proxys (/32)**, nie ein Docker-/LAN-Netz: Mit `COMPOSE_PROFILES=proxy` +

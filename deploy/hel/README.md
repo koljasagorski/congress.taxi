@@ -98,7 +98,7 @@ standardmäßig nur `127.0.0.1`); für den Rand `WEB_BIND=10.10.10.80` in `.env`
 `caddy/edge-hardening.Caddyfile` einbinden (Referrer-Policy je Zweig: SPA `strict-origin-when-cross-origin`, `/api` `no-referrer`,
 CSP-`img-src` passend zu `TILE_URL`) und `reverse_proxy 10.10.10.80:8080` für alles außer `/api`. (4) Vor dem Livegang `TILE_URL` und
 `TILE_ATTRIBUTION` auf einen für den Betrieb zulässigen Kartenserver setzen (OSM-Standard-Tiles nur Entwicklung) sowie die Platzhalter in
-Datenschutzerklärung/Impressum (`web/src/i18n/de.ts`) ausfüllen. Der Rand hat keine `log`-Direktive (kein Access-Log) **und** einen `handle_errors`-Block (Snippet `congress_error_pages`): Ohne ihn schreibt Caddy bei jedem 502 einen Fehlereintrag mit IP, `X-Forwarded-For` und Query-String (bei `/api/match`: Koordinaten) ins Log. Gilt auch für `m.`/`dns.` im selben Rand-Caddyfile (Repo `patchletter.com`, dort nicht geändert).
+Datenschutzerklärung/Impressum (`web/src/i18n/de.ts`) ausfüllen (2026-11-11: Angaben wie auf patchletter.com eingetragen, Texte weiter Entwurf; Kacheln über den Proxy `TILE_URL=/tiles/{z}/{x}/{y}.png`, von `ausrollen.sh` gesetzt). Der Rand hat keine `log`-Direktive (kein Access-Log) **und** einen `handle_errors`-Block (Snippet `congress_error_pages`): Ohne ihn schreibt Caddy bei jedem 502 einen Fehlereintrag mit IP, `X-Forwarded-For` und Query-String (bei `/api/match`: Koordinaten) ins Log. Gilt auch für `m.`/`dns.` im selben Rand-Caddyfile (Repo `patchletter.com`, dort nicht geändert).
 
 ## DNS (Cloudflare, Zone `sgr.ski`, „DNS only“, TTL 60)
 

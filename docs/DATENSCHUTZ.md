@@ -231,7 +231,7 @@ Diese Punkte kann der Code nicht abnehmen; sie sind vor dem Echtbetrieb zu klär
 4. **Datenschutz-Folgenabschätzung prüfen** (Art. 35 DSGVO): Es werden Standortdaten (Start- und Abholpunkte, oft Wohnorte) und Routen verarbeitet; ob eine DSFA erforderlich ist, ist
    zu bewerten und die Entscheidung zu dokumentieren.
 5. **Auftragsverarbeitungsverträge** (Art. 28) mit Hoster, Kartenanbieter, ggf. Sicherungsdienst und DNS-Anbieter prüfen; Drittlandtransfer (Abschnitt 7) klären.
-6. **Kartenserver** festlegen (eigener Server oder Anbieter, der den Einsatz erlaubt); `TILE_URL`/`TILE_ATTRIBUTION` setzen; Abschnitt 7 und die Oberfläche (`privacy.s7` übernimmt den Host automatisch) prüfen.
+6. **Kartenserver:** Auf `hel` läuft der Kachel-Proxy (`TILE_URL=/tiles/...`, Oberfläche zeigt `privacy.s7proxy`): OSM sieht nur die Serveradresse. Prüfen, ob die leichte Nutzung nach der OSM-Policy für die erwartete Nutzerzahl reicht; sonst eigener Server oder Anbieter und `TILE_URL`/`TILE_ATTRIBUTION` setzen (Abschnitt 7 prüfen).
 7. **Sicherungen der Plattform** (PBS auf `hel`, Entscheidung offen) mit der Retention in Einklang bringen; **Backup-Cron** einrichten oder bewusst darauf verzichten; Stichtag und `BACKUP_KEEP_DAYS` abstimmen.
 8. **Log-Härtung der Datenbank** entscheiden (R-5) und die Ausrollen-Schritte nach den Log-Fixes durchführen (OSRM-Container neu erstellen, Rand-Caddy-Block ersetzen, bereits geschriebene Logs und Sicherungen bewerten).
 9. **E-Mail-Verifikation** (benötigt SMTP) und die Härtung gegen Abtasten (Abschnitt 11, R-1) als Entscheidung dokumentieren: umsetzen oder bewusst hinnehmen.

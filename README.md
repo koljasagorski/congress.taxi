@@ -242,7 +242,7 @@ an die Container gereicht (`api` und `cleanup` lesen `.env` per `env_file`; die 
 
 | Variable | Standard | Bedeutung |
 |---|---|---|
-| `TILE_URL` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | Kachelserver. Der öffentliche OSM-Server ist **nur für Entwicklung** gedacht, siehe [Tile-Server](#tile-server-karten). Der Host wird automatisch in die CSP (`img-src`) übernommen |
+| `TILE_URL` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | Kachelserver. Der öffentliche OSM-Server ist **nur für Entwicklung** gedacht, siehe [Tile-Server](#tile-server-karten). Der Host wird automatisch in die CSP (`img-src`) übernommen. `/tiles/{z}/{x}/{y}.png` (relativ) schaltet den **Kachel-Proxy** des Web-Containers ein (Betrieb auf `hel`) |
 | `TILE_ATTRIBUTION` | OSM-Mitwirkende (im Code hinterlegt) | Quellenangabe unter der Karte; erlaubt sind Text und `<a href="https://…">`-Links. Beim Wechsel des Kartenservers anpassen |
 | `GEOCODER` | `none` | `photon`/`nominatim` werden wie `none` behandelt (siehe Grenzen) |
 
@@ -496,11 +496,18 @@ Es gibt **keine** Endpunkte zum Ändern von E-Mail, Anzeigename oder Passwort un
 
 ## Tile-Server (Karten)
 
-Die Karte lädt Kacheln vom Kartenserver aus `TILE_URL`. Der Standard, der öffentliche OSM-Server `tile.openstreetmap.org`, ist **ausschließlich für Entwicklung** gedacht: Die
+**Betrieb auf `hel` (seit 2026-11-11):** `TILE_URL=/tiles/{z}/{x}/{y}.png`. Der Web-Container (`web/nginx.conf`) holt die Kacheln von `tile.openstreetmap.org` und
+hält sie 7 Tage im Cache (Volume `tile-cache`, höchstens 300 MB). Er gibt nichts vom Nutzer weiter (kein Cookie, keine IP, kein Referer; fester User-Agent
+`congress-taxi-tile-cache/1.0`), erlaubt nur Zoom 0–19 mit ganzzahligen Kachelnummern, begrenzt alle Abrufe zusammen auf 100/s und schreibt kein Zugriffsprotokoll.
+OSM sieht damit nur die Serveradresse; der eigene Server sieht die Kachelkoordinaten (also die Gegend), speichert sie aber nicht. **Grenzen:** Die OSM-Policy
+erlaubt nur leichte Nutzung (Wortlaut dort nachlesen); bei sehr vielen gleichzeitigen Nutzern auf einen eigenen Tile-Server oder einen Anbieter wechseln.
+Belegt: echter Abruf (erst `MISS`, dann `HIT`, PNG, ungültige Pfade 404, POST 403) und `nginx -t` in CI; nicht belegt: Last.
+
+Allgemein: Die Karte lädt Kacheln vom Kartenserver aus `TILE_URL`. Der Standard, der öffentliche OSM-Server `tile.openstreetmap.org`, ist **ausschließlich für Entwicklung** gedacht: Die
 [Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/) stellt Bedingungen an die Nutzung (u. a. Quellenangabe, aussagekräftiger Referer, Zurückhaltung beim Abruf)
 und behält sich Einschränkungen vor; für ein Event mit vielen Nutzern ist der Server nach der Projektentscheidung nicht vorgesehen (Wortlaut dort nachlesen). Für den echten Betrieb bitte einen **eigenen Tile-Server** oder einen **Anbieter** verwenden, der diesen Einsatz erlaubt
 (Vertrag und Datenschutzfragen mit dem Anbieter klären), und `TILE_URL` sowie `TILE_ATTRIBUTION` setzen. Die CSP (`img-src`) folgt `TILE_URL` automatisch (`caddy/tile-origin.sh`); der
-Rand-Caddy in `deploy/hel/` hat den Host fest eingetragen (`caddy/edge-hardening.Caddyfile`) und muss beim Wechsel mitgeändert werden.
+Rand-Caddy in `deploy/hel/` erlaubt in `img-src` nur die eigene Origin (`caddy/edge-hardening.Caddyfile`); bei einem externen Kartenserver dessen Host dort ergänzen.
 
 **Datenschutz:** Der Browser sendet an den Kartenserver seine IP-Adresse, die Kachelkoordinaten des angezeigten Ausschnitts (also auch die Gegend von Start- oder Abholpunkt) und die
 Origin der Seite als Referer. Die Punkte selbst, Konto- und Fahrtdaten erhält der Kartenserver nicht. Ein eigener Tile-Server hinter der eigenen Origin würde die Weitergabe an Dritte

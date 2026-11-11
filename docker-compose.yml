@@ -113,6 +113,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      - tile-cache:/var/cache/tiles
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
@@ -230,5 +232,6 @@ networks:
 
 volumes:
   db-data:
+  tile-cache:
   caddy-data:
   caddy-config:

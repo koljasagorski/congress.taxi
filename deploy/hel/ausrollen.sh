@@ -39,6 +39,7 @@ set_kv OSRM_PBF_URL "$OSRM_PBF_URL"
 set_kv API_BIND "$API_BIND"
 set_kv WEB_BIND "$WEB_BIND"
 set_kv DOMAIN "$PUBLIC_DOMAIN"
+set_kv TILE_URL "/tiles/{z}/{x}/{y}.png"
 set_kv TRUSTED_PROXIES "$EDGE_PROXY"
 
 if [ ! -f data/osrm/map.osrm.mldgr ]; then

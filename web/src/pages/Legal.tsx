@@ -24,6 +24,7 @@ export function PrivacyPage() {
     end: config ? formatDate(config.event.end_date) : "[Ende der Veranstaltung]",
     host: config ? hostOf(config.map.tile_url) || "[Kartenserver]" : "[Kartenserver]",
   };
+  const viaProxy = config !== undefined && config !== null && hostOf(config.map.tile_url) === "";
   return (
     <article aria-labelledby="privacy-title">
       <h1 id="privacy-title">{t("privacy.title")}</h1>
@@ -31,7 +32,12 @@ export function PrivacyPage() {
       {PRIVACY_SECTIONS.map((s) => (
         <section key={s} aria-labelledby={`privacy-${s}`}>
           <h2 id={`privacy-${s}`}>{t(`privacy.${s}.title` as MessageKey)}</h2>
-          <p>{t(`privacy.${s}.body` as MessageKey, params)}</p>
+          <p>
+            {t(
+              (s === "s7" && viaProxy ? "privacy.s7proxy.body" : `privacy.${s}.body`) as MessageKey,
+              params,
+            )}
+          </p>
         </section>
       ))}
       <p>
@@ -51,7 +57,7 @@ export function ImprintPage() {
       <h2>{t("imprint.provider")}</h2>
       <p className="pre-line">{t("imprint.providerBody")}</p>
       <h2>{t("imprint.contact")}</h2>
-      <p>{t("imprint.contactBody")}</p>
+      <p className="pre-line">{t("imprint.contactBody")}</p>
       <h2>{t("imprint.responsible")}</h2>
       <p>{t("imprint.responsibleBody")}</p>
       <p>

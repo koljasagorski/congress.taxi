@@ -31,8 +31,9 @@
 # Stufe ERROR (`http.log.error`, z. B. bei jedem 502, wenn die API beim Ausrollen nicht erreichbar ist) mit
 # `remote_ip`, `client_ip`, URI samt Query-String (bei /api/match: lat/lon) und allen Headern. Erst ein
 # `handle_errors`-Block (Snippet `congress_error_pages`) unterdrückt diesen Eintrag.
-# img-src in der CSP unten nennt den Tile-Host: bei geändertem TILE_URL mitändern (im mitgelieferten Caddy
-# leitet caddy/tile-origin.sh ihn ab). Der öffentliche OSM-Tile-Server ist nur für Entwicklung vorgesehen.
+# img-src in der CSP unten erlaubt nur die eigene Origin: Betrieb mit TILE_URL=/tiles/{z}/{x}/{y}.png (der Web-Container
+# leitet Kacheln mit Cache weiter, siehe web/nginx.conf). Bei einem externen Kartenserver dessen Host in img-src ergänzen
+# (im mitgelieferten Caddy leitet caddy/tile-origin.sh ihn ab).
 # TRUSTED_PROXIES der API muss dann 10.10.10.70 enthalten (setzt deploy/hel/ausrollen.sh), sonst
 # teilen sich alle Nutzer ein Rate-Limit.
 # `/api/health/ready` bleibt gesperrt (nur intern), siehe unten.
@@ -40,7 +41,7 @@
 (congress_edge_hardening) {
 	header {
 		Strict-Transport-Security "max-age=31536000"
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "{args[0]}"

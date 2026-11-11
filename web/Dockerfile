@@ -11,6 +11,10 @@ COPY . .
 RUN npm run build && npm run check:external
 
 FROM nginxinc/nginx-unprivileged:1.29-alpine
+USER root
+# Cache der Kachel-Proxys (Named Volume erbt Besitzer und Rechte dieses Verzeichnisses)
+RUN mkdir -p /var/cache/tiles && chown 101:101 /var/cache/tiles
+USER 101
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8080

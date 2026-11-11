@@ -1,9 +1,10 @@
 # PLAN – Mitfahrer-Matching für den 40C3
 
-Stand: 2026-11-10 · Status: **Phasen 1–7 abgeschlossen (Phase 8 offen)** · Teilstand läuft auf Proxmox (hel, CT 220) unter https://congress.sgr.ski (nur `/api/health`)
+Stand: 2026-11-11 · Status: **Phasen 1–7 und E2E abgeschlossen, Dokumentation (Phase 8) geschrieben, Abnahme steht aus** · Teilstand läuft auf Proxmox (hel, CT 220) unter https://congress.sgr.ski (nur `/api/health`)
 
 Dieses Dokument hält Phasen, Annahmen, Entscheidungen und offene Punkte fest.
-Alles hier ist bewusst knapp; Details stehen im README (ab Phase 8).
+Alles hier ist bewusst knapp; Details stehen im [README](README.md), die vollständige Liste der Grenzen dort im Abschnitt „Bekannte Grenzen und offene Punkte“,
+die Datenschutz-Vorlage in [`docs/DATENSCHUTZ.md`](docs/DATENSCHUTZ.md).
 
 ## Zielplattform: Proxmox
 
@@ -21,19 +22,23 @@ Alles läuft auf **einer Proxmox-VM** (empfohlen) oder einem Proxmox-LXC-Contain
   Compose-Profil abgeschaltet (Phase 7), damit Port 80/443 nicht kollidieren.
 - Es gibt keine Abhängigkeit vom Docker-Socket; alle Secrets liegen in `.env`.
 
-### Ressourcen (Stand der Recherche, **nicht lokal verifiziert**)
+### Ressourcen (Hamburg gemessen, Deutschland **nicht verifiziert**)
 
 | Größe | Wert | Quelle/Status |
 |---|---|---|
+| `hamburg-latest.osm.pbf` | 51,6 MiB (≈ 54 MB) | **gemessen** (2026-11-11), MD5 geprüft |
+| RAM `osrm-extract` für Hamburg | 390 MB Spitze (Selbstauskunft des Werkzeugs); `osrm-partition` 106 MB, `osrm-customize` 116 MB | **gemessen** (2026-11-11, macOS arm64, Docker Desktop) |
+| Dauer `make osrm-prepare` für Hamburg | ≈ 17 s insgesamt (Download ≈ 9 s), `data/osrm` ≈ 90 MB | **gemessen** (2026-11-11) |
 | `germany-latest.osm.pbf` | 4,9 GB | gemessen (Geofabrik, 2026-11-10) |
-| RAM `osrm-extract` für Deutschland | ≈ 20 GB Peak | **extrapoliert**: Europa (28 GB PBF) ≈ 118 GB Peak laut OSRM-Issue #6146, linear auf 4,9 GB skaliert. Ungeprüft. |
+| RAM `osrm-extract` für Deutschland | **Schätzung, grob 20 bis 35 GB Spitze** | **ungeprüft.** Untergrenze: Europa (28 GB PBF) ≈ 118 GB Peak laut OSRM-Issue #6146, linear auf 4,9 GB skaliert ≈ 20 GB. Obergrenze der Spanne: Verhältnis der Hamburg-Messung (390 MB zu 54 MB) linear hochgerechnet ≈ 35 GB. Das ist eine Spanne aus zwei Extrapolationen, keine Messung und keine harte Schranke |
 | RAM `osrm-routed` (Betrieb, MLD) | ≈ 7 GB | **extrapoliert** (Europa ≈ 39 GB). Ein Blog nennt 3–5 GB. Ungeprüft. |
+| Dauer der Aufbereitung für Deutschland | nicht bekannt | **nicht gemessen**, nicht aus Hamburg ableitbar |
 | Disk | ≥ 40 GB frei | grobe Schätzung (PBF 5 + Graph 10–15 + DB + Images) |
 
 Konsequenz: Die Vorbereitung (`make osrm-prepare`) für Deutschland entweder auf einer
 temporär größeren VM ausführen und `data/osrm/` übernehmen, oder ein kleineres Extrakt
 wählen (z. B. nur die für die Anreise relevanten Bundesländer). Die Betriebs-VM braucht
-dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54 MB).**
+dann nach den Schätzungen ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54 MB).**
 
 ## Annahmen und Entscheidungen
 
@@ -72,8 +77,9 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
    erhalten, die nicht der Person gehört, mit der es sich verabredet hat.
    Wer sich vertippt, merkt es erst beim Login. Bewusst hingenommen (kurzlebige Event-App, kein
    Mailserver, Datensparsamkeit); Gegenmaßnahmen sind Rate-Limit (Phase 2/7) und die
-   Kontaktfreigabe erst nach beidseitiger Bestätigung. README und Datenschutzdokumentation
-   nennen die Grenze in Phase 8.
+   Kontaktfreigabe erst nach beidseitiger Bestätigung. README (Grenze S-1) und
+   `docs/DATENSCHUTZ.md` (Abschnitt 11, R-3) nennen die Grenze.
+   **Daraus folgt auch (SEC-1):** Missbrauch ohne E-Mail-Bestätigung (Scheinfahrten, Konten-Flut) – siehe Annahme 20.
    **E-Mail-Syntax je Umgebung:** `email-validator` lehnt reservierte Domains (`.invalid`,
    `.local`, `.test` …) ab. In `APP_ENV=production` bleibt das so (strikt). In `development`
    und `test` sind sie erlaubt (u. a. für `seed_demo` in Phase 4 mit `@demo.invalid`); die
@@ -181,7 +187,7 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
     angemeldeten Angreifer. Entschärft (nicht verhindert) durch (a) Anmeldepflicht, (b) **gröbere Ausgabe**
     (`detour_km` in 0,5-km-Schritten, `detour_minutes` ganzzahlig, `detour_ratio` 2 Stellen; Filter und Sortierung
     intern exakt), (c) Rate-Limit `RATE_LIMIT_MATCH_PER_MIN` je IP und `RATE_LIMIT_MATCH_USER_PER_MIN` je Nutzer (Phase 7). Verbleibende Grenze bewusst hingenommen
-    (kurzlebige Event-App); README/Datenschutzdoku nennen sie in Phase 8. Die Oberfläche sagt es ehrlich
+    (kurzlebige Event-App); README (Grenze D-1) und `docs/DATENSCHUTZ.md` (Abschnitt 11, R-1) nennen sie. Die Oberfläche sagt es ehrlich
     (`offer.startPrivacy`: gezieltes Abtasten kann den Startbereich eingrenzen, besser einen Startpunkt in der Nähe statt der
     Haustür wählen). **Offene Betreiberentscheidung (technische Härtung, nicht umgesetzt):** Fahrt-Start bei der Anlage auf ein
     gröberes Raster/einen Versatz abbilden (müsste auch für Vorfilter und Umweg gelten, kostet Genauigkeit des Umwegs) oder
@@ -214,11 +220,37 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
     Entscheidung des Betreibers, Annahme 6). Gegenmittel im Betrieb: Konten löschen/Zugang sperren, `MATCH_MAX_CANDIDATES`
     erhöhen (mehr OSRM-Last je Suche).
 
-## Offene Fragen (nicht blockierend)
+21. **JWT nicht widerrufbar (Logout).** `POST /api/auth/logout` löscht nur das Cookie; ein kopiertes Token bleibt bis `JWT_TTL_MINUTES`
+    (Standard 720 min = 12 h) gültig, auch nach dem Logout, und erlaubt `GET /api/me` (E-Mail) sowie `DELETE /api/me`. Nach dem Löschen des
+    Kontos ist es wertlos, ein Wechsel von `JWT_SECRET` macht alle Tokens ungültig. Bewusst hingenommen (zustandslos, kein Sitzungsspeicher, kurzlebige
+    Event-App); im Code (`app/auth/tokens.py`) dokumentiert, jetzt auch hier, im README (S-4) und in `docs/DATENSCHUTZ.md`. **Offen:** Der
+    eingefrorene API-Vertrag nennt es noch nicht (Zeile „logout: 204, Cookie gelöscht“); Änderungsanfrage an die Integration, bei Bedarf kürzere
+    `JWT_TTL_MINUTES` setzen.
+22. **Dokumentationskonvention (Phase 8).** Aussagen in README und Datenschutz-Vorlage stammen aus Code, Tests und ausgeführten Befehlen; Messwerte
+    tragen eine Nachweis-Kennzeichnung ([A] ausgeführt in der Dokumentationsrunde, [T] Test/CI, [P] Prüfbefund früherer Runden übernommen, [–]
+    nicht geprüft). Schätzungen sind als Schätzung gekennzeichnet (Deutschland-Extrakt). `docs/DATENSCHUTZ.md` ist eine **Vorlage und kein
+    Rechtsrat**; die Datenschutzerklärung in der Oberfläche (`web/src/i18n/de.ts`) ist weiter ein Platzhalter-Entwurf und wurde in dieser Runde bewusst **nicht** geändert.
+23. **Nicht behobene, niedrige Befunde der Prüfrunden** (ehrlich in README „Bekannte Grenzen“ geführt, nicht hier dupliziert): 500 statt 422 bei extremen
+    Eingaben (R-3), DB-Verbindung „idle in transaction“ während OSRM bei `POST /api/rides/{id}/requests` (R-4), Fokusverlust nach Absenden und im `ConfirmButton`
+    sowie Toggle mit wechselndem Namen und `aria-pressed` (F-1 bis F-3), Browser-Zeitzone ohne Hinweis (R-6), Widerspruch `web/README.md` ↔ CSP (F-4), Koordinaten
+    stornierter Fahrten/abgelehnter Anfragen bis zum Stichtag (D-3), logische statt physische Löschung (D-4), Dokumentationslücken in `deploy/hel/` und
+    `caddy/edge-hardening.Caddyfile` (B-4), fest verdrahteter OSRM-Cache-Schlüssel im CI (B-5), nicht auf Personenbezug geprüftes Datenbank-Containerlog (D-5).
 
-- Endgültiger Ort und Datum des 40C3 → `EVENT_*` in `.env` setzen.
-- Eigener Tile-Server vs. öffentlicher OSM-Tile-Server (nur Dev laut Tile Usage Policy).
-- Soll Caddy auf der Proxmox-VM selbst TLS terminieren, oder sitzt davor ein Proxy?
+## Offene Fragen für den Betreiber
+
+Nicht blockierend für den Code, aber **vor dem Echtbetrieb** zu entscheiden. Quellen und Details: README („Bekannte Grenzen und offene Punkte“), `docs/DATENSCHUTZ.md` (Abschnitt 13), `deploy/hel/README.md`.
+
+1. **Ort und Datum des 40C3.** `EVENT_LAT`, `EVENT_LON`, `EVENT_START_DATE`, `EVENT_END_DATE` sind Platzhalter (Hamburg CCH, 27.–30.12.2026), unbestätigt. Das Ende bestimmt die Löschfrist.
+2. **Tile-Server.** Eigener Tile-Server oder Anbieter, der den Einsatz erlaubt; `TILE_URL`/`TILE_ATTRIBUTION` setzen. Der öffentliche OSM-Server ist nur für Entwicklung. Rand-Caddy (`caddy/edge-hardening.Caddyfile`) mitändern.
+3. **E-Mail-Verifikation und SMTP.** Ohne Mailversand keine Bestätigung, kein Passwort-Reset (Annahmen 6, 20). Umsetzen oder bewusst hinnehmen; dasselbe gilt für die Härtung gegen Abtasten des Fahrerstarts (Annahme 18).
+4. **PBS-Entscheidung für CT 220 (hel).** Sicherung bis zu 6 Monate widerspricht der Retention; Gast ausnehmen oder Aufbewahrung anpassen (`pvesh set /cluster/backup/taeglich --exclude 210,220`, die Liste wird ersetzt). Ebenso: App-Backup (`age` installieren, Cron für `make backup`/`make purge-backups`) einrichten oder bewusst darauf verzichten.
+5. **Deutschland-Extrakt und Hardware.** Aufbereitung braucht nach der Schätzung grob 20 bis 35 GB RAM (ungemessen), Betrieb ≈ 7 GB (ungemessen), Platte ≥ 40 GB: Wo wird aufbereitet, wie viel RAM bekommt der Gast, oder ein kleineres Extrakt? Probelauf auf der Zielhardware und Zahlen nachtragen.
+6. **Impressum und Datenschutzerklärung.** Platzhalter in `web/src/i18n/de.ts` füllen, Oberfläche mit `docs/DATENSCHUTZ.md` angleichen (Sichtbarkeiten, Grenzen, Speicherdauer); Rechtsprüfung; DSB-Pflicht, Verzeichnis von Verarbeitungstätigkeiten, DSFA-Prüfung, AV-Verträge.
+7. **Linear-Projekt.** Kein Projekt für dieses Repo verknüpft (das Linear-MCP war nicht authentifiziert); Projekt-URL in `CLAUDE.md` eintragen.
+8. **Lizenz.** Das Repository enthält keine Lizenzdatei.
+9. **Rollout auf hel.** Letzter ausgerollter Stand ist `97687a9` (Teilstand). Beim Ausrollen: `RATE_LIMIT_LOGIN_PER_EMAIL_PER_MIN` in der `.env` umbenennen, `EVENT_*` prüfen (ungültige Kombination verhindert den Start), `osrm` neu erstellen, Rand-Block ersetzen (Anmerkung DS-2, auch für `m.`/`dns.` im Repo `patchletter.com`), Frontend freischalten (Lücken B-4 beachten), Firewall für Port 8080.
+10. **Betriebsentscheidung nach der Frist.** Die API sperrt sich nicht selbst (Annahme 5): Stack nach Fristablauf stoppen.
+11. **Soll Caddy auf der Proxmox-VM selbst TLS terminieren, oder sitzt davor ein Proxy?** Im Teilstand auf `hel` terminiert der Rand-Caddy (CT 180).
 
 ## Phasen
 
@@ -229,7 +261,14 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
 - [x] **Phase 5** Anfragen/Accept mit Locking, Kontaktfreigabe (E-Mail erst bei `accepted`, nur Beteiligte; grobe Umweg-Werte)
 - [x] **Phase 6** Frontend (React/Vite/TypeScript/Leaflet, `web/`), Container `web`, Caddy liefert es aus, CI-Job `web`
 - [x] **Phase 7** Retention-Cleanup, Backup (age), Security-Header, Rate-Limits (IP, E-Mail, Nutzer), Caddy
-- [ ] Phase 8 E2E-Tests (**erledigt**, `e2e/`, CI-Job `e2e`), README, Datenschutzdoku, Aufräumen (offen)
+- [ ] **Phase 8** E2E-Tests, README, Datenschutzdoku, Aufräumen, Abnahme
+  - [x] E2E-Tests (`e2e/`, CI-Job `e2e`, 7 Tests im Stand dieser Runde)
+  - [x] README (Überblick, Architektur, Quickstart, Konfiguration, OSRM, Deployment, Backup, Datenschutz, Matching, API, Tile-Server, Grenzen)
+  - [x] Datenschutzdoku (`docs/DATENSCHUTZ.md`, Entwurf, kein Rechtsrat)
+  - [x] Aufräumen der Dokumentation: Plan, Übergabe (`CLAUDE.md`), README; veraltete Verweise („Phase 1 von 8“, „ab Phase 8“, „in Phase 8“) entfernt (`git grep` ohne Treffer), Links und Pfade geprüft. `deploy/hel/README.md`
+    bewusst unverändert (dort stehen noch Zukunftsformulierungen wie „mit Phase 6/7 geöffnet“, siehe README B-4)
+  - [ ] **Abnahme** (offen: Die Abnahme prüft den Stand von `origin/main`, bestätigt die Punkte oben und ergänzt hier **nur noch den Haken**. Sie darf
+    „Phase 8 erledigt“ erst melden, wenn CI auf dem Commit „docs: Phase 8 …“ grün ist und README-Befehle sowie Datenschutz-Aussagen stichprobenartig gegen Code/Ausführung bestätigt sind.)
 
 Jede Phase: eigener Conventional-Commit, grüne Tests, sofort pushen.
 
@@ -333,6 +372,29 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
   horizontal scrollbar (WCAG 1.4.10); eine normale 41-Zeichen-Adresse reichte schon. Test: `e2e/tests/05-schmale-ansicht.spec.ts`
   (Viewport 360×740, Kopfzeile, Trefferliste, Kontaktfreigabe beider Seiten; vor dem Fix rot, danach grün). Nur dieser eine Test läuft mobil.
 - Nicht geprüft: Firefox/WebKit, weitere Mobil-Viewports, echte Kacheln, TLS.
+
+### Phase 8, Teil Dokumentation (2026-11-11, macOS arm64, Docker Desktop, Hamburg-Extrakt)
+
+Geschrieben wurden `README.md`, `docs/DATENSCHUTZ.md` (Entwurf, kein Rechtsrat), dieser Plan und die Übergabe in `CLAUDE.md`. Nicht geändert wurden Code, Oberfläche, `docs/API-CONTRACT.md`
+(eingefroren) und `deploy/hel/README.md`; Befunde dazu stehen als offene Punkte im README.
+
+**Quickstart-Befehle tatsächlich ausgeführt** (frische Kopie per `git archive` außerhalb des Repos, anderes `COMPOSE_PROJECT_NAME` und andere Hostports, damit der Dev-Stack unberührt blieb; nach dem Lauf
+`down -v`, Kopie gelöscht):
+`make env DEV=1` (zweiter Aufruf bricht ab) · `make osrm-prepare` (MD5 geprüft, ≈ 17 s, `osrm-extract` 390 MB Spitze, `data/osrm` ≈ 90 MB; zweiter Aufruf „bereits vorbereitet“, `FORCE=1` Neuaufbau) ·
+`make up` (5 Dienste healthy, ≈ 20 s bei warmem Build-Cache) · `curl …/api/health/ready` → `ok` (PostGIS 3.5, Ziel 20,5 m von der Straße) · `make seed-demo` (7 Konten, 6 Fahrten, Kontrollsuche ab Altona 6 Treffer,
+≈ 62 s wegen Login-Limit, legt keine Anfragen an) · `make backup` (74 616 Bytes) → `make restore` in neue Datenbank (7 Konten; zweiter Aufruf ohne `--replace` verweigert) ·
+`make cleanup DRY=1` (Frist läuft bis 2027-01-14T00:00:00+00:00) und mit `--now 2027-02-01T00:00:00Z` (würde löschen: rides=6 users=7; danach gelöscht; zweiter Lauf 0) · `make purge-backups` (nichts zu löschen) ·
+`make up-proxy` (mit `HTTP_PORT=18082`, `HTTPS_PORT=18443`: `/` 200, `/api/health` 200, `/api/health/ready` 404, API-Port am Host nicht erreichbar) · `make down-proxy` · `docker compose config --quiet` mit und ohne Profil `proxy`.
+Im Repo selbst: `make lint` grün (ruff, ruff format, mypy), `REQUIRE_OPS_TESTS=1 make test`: **839 passed** (68 s, nichts übersprungen), `make web-check` grün (vitest 102 Tests, Build, `check:external`),
+`make e2e`: **7 passed** (Chromium; ein Test mehr als in der E2E-Runde oben, die Registrierungs-Formularprüfung in `01-konto-und-fahrt.spec.ts`).
+**Nicht** ausgeführt: `cp .env.example .env`-Pfad (nur CI-belegt, mit Hamburg), Deutschland-Extrakt, Coolify, Lauf auf `hel`.
+Gefunden: Ein Bind-Mount aus dem Scratchpad ist unter Docker Desktop leer (siehe `CLAUDE.md`); das Log des Datenbank-Containers enthält bei Constraint-Verletzungen Zeileninhalt (README D-5).
+
+**Korrektur zu Commit `6851a93`:** Der Commit-Text nennt „12 neue Tests“; tatsächlich sind es 14 (9 in `test_cleanup.py`, 3 in `test_config.py`, 2 für das Backup-Skript). Der Text bleibt (kein Force-Push).
+
+**Weitere Prüfungen der Dokumentation:** jede Variable aus `.env.example` (62, auch auskommentierte) und jedes Feld von `Settings` kommt im README vor (Skript); relative Links, Anker und Dateipfade
+in README, `docs/DATENSCHUTZ.md`, `PLAN.md`, `CLAUDE.md` existieren (Skript, nur Nicht-Pfade wie `postgis/postgis` meldet es); externe Links (age, uv, OSM-Tile-Policy) antworten 200; das Mermaid-Diagramm
+wurde mit `mermaid@11.4.1` geparst (**Syntax geprüft, nicht gerendert**; Negativkontrolle schlägt fehl).
 
 ## Deployment auf Proxmox (hel) – Teilstand ausgeführt am 2026-11-10
 

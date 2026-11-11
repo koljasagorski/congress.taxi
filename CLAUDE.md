@@ -7,10 +7,18 @@ Zielplattform: **Proxmox** (Docker Compose). Teilstand läuft seit 2026-11-10 in
 
 Siehe Phasen-Checkliste in `PLAN.md`. Jede Phase = ein Conventional-Commit, grüne Tests, sofort pushen.
 
+**Stand 2026-11-11:** Phasen 1–7, E2E (`e2e/`) und die Dokumentation von Phase 8 sind fertig; **offen ist nur die Abnahme** (sie ergänzt in `PLAN.md` den letzten Haken).
+Nicht behobene niedrige Befunde und alle Betreiberentscheidungen stehen vollständig in `README.md` („Bekannte Grenzen und offene Punkte“) und `PLAN.md`
+(„Offene Fragen für den Betreiber“) – dort weiterarbeiten, nicht hier duplizieren. Wichtigste offene Punkte: Platzhalter (Ort/Datum, Impressum, Datenschutztexte in
+`web/src/i18n/de.ts`), Tile-Server, SMTP/E-Mail-Verifikation, PBS/Backup auf hel, Deutschland-Extrakt (nur geschätzt), Oberfläche mit `docs/DATENSCHUTZ.md` angleichen.
+Auf hel ist nur der Teilstand von `97687a9` ausgerollt (nur `/api/health`); die späteren Fixes sind dort **nicht** ausgerollt.
+
 ## Befehle
 
 - `make env DEV=1` · `make osrm-prepare` · `make up` · `make test` · `make lint` · `make web-check` (Frontend: tsc, eslint, vitest, Build, check:external; alles in `Makefile`)
-- Tests brauchen laufende DB (`make test` startet sie) und lesen `.env`.
+- Tests brauchen laufende DB (`make test` startet sie) und lesen `.env`. `REQUIRE_OPS_TESTS=1` macht Docker-/Betriebstests zur Pflicht (CI-Job `ops`).
+- Dokumentation: `README.md`, `docs/DATENSCHUTZ.md` (Entwurf, kein Rechtsrat), `docs/API-CONTRACT.md` (eingefroren, nur über Änderungsanfrage). Einige Tests lesen Doku-Dateien
+  (`test_privacy_claims.py` verlangt in `PLAN.md`, `docs/API-CONTRACT.md`, `matching.py` „Median … 200 m“ und „900 m“ und verbietet „bis wenige km“) – nach Doku-Änderungen `make test` laufen lassen.
 - `make e2e` (Playwright, `e2e/`): startet ein eigenes Compose-Projekt `mitfahrer-e2e` (Port 18080, angehobene Rate-Limits nur dort,
   Kachel-Host wird im Test abgefangen), braucht `make osrm-prepare` (Hamburg) und Docker; `make e2e-down` räumt auf. Details: `e2e/README.md`.
 
@@ -25,6 +33,12 @@ Siehe Phasen-Checkliste in `PLAN.md`. Jede Phase = ein Conventional-Commit, grü
 - **OSRM snappt Punkte außerhalb des Extrakts still auf ferne Straßen** (München → 592 km Snap im
   Hamburg-Extrakt). Jede Koordinate muss gegen `MATCH_MAX_SNAP_DISTANCE_M` geprüft werden.
 - GNU Make 3.81 (macOS): keine Make-4-Features. Kein `sed -i` in Skripten (macOS/Linux verschieden).
+- **Docker Desktop (macOS) sieht nicht jeden Pfad:** Ein Bind-Mount aus dem Scratchpad (`/private/tmp/claude-501/…`) oder `$TMPDIR` ist im Container **leer**
+  (`osrm-extract: Input file /data/map.osm.pbf not found`, obwohl die Datei auf dem Host liegt). Compose-Läufe mit Bind-Mounts (z. B. `make osrm-prepare`) im Repo oder in einer
+  Kopie unter `~/.cache/…` ausführen, nicht im Scratchpad.
+- `env_file: .env` in `docker-compose.yml` ist Pflicht: Ohne `.env` bricht `docker compose` ab (auch `config`).
+- Zweiter Stack neben dem Dev-Stack: eigenes `COMPOSE_PROJECT_NAME` und andere Hostports (`DB_PORT`, `OSRM_PORT`, `API_PORT`, `WEB_PORT`; bei Caddy `HTTP_PORT`/`HTTPS_PORT`).
+  `make seed-demo` dauert ≈ 1 min (Login-Limit 10/min) und braucht die API auf dem Host (nicht unter `make up-proxy`).
 - **Nie `git add -A` blind:** Am 2026-11-10 landete eine macOS-Kopie `.env 2` (Dev-Secrets) in `f804b7f` und damit im
   öffentlichen Repo. Entfernt, `.gitignore` (`.env *`) und Test `test_repo_hygiene.py` ergänzt, Dev-Secrets rotiert;
   die Historie bleibt (kein Force-Push) – alte Werte gelten als verbrannt. Produktiv-Secrets entstehen auf dem Gast
@@ -39,7 +53,7 @@ Siehe Phasen-Checkliste in `PLAN.md`. Jede Phase = ein Conventional-Commit, grü
 - Nur CI-geprüfte Commits ausrollen (`deploy/hel/README.md`, „Anlegen“); SSH in **wenige gebündelte Sitzungen**;
   keine Schlüssel, `~/.ssh/config`- oder `.env`-Inhalte ins Repo/in Protokolle. Infos zum Wirt: Repo `patchletter.com`.
 - Der Rand-Caddy (CT 180) reicht im Teilstand nur `/api/health` durch – das Frontend (Phase 6) ist **nicht** ausgerollt; Block öffnen und `web` freischalten siehe `deploy/hel/README.md`.
-- **Vor Phase 2 live:** PBS-Sicherung von CT 220 entscheiden (siehe README, „Offene Entscheidungen“).
+- **Vor dem Live-Gang:** PBS-Sicherung von CT 220 entscheiden (siehe `deploy/hel/README.md`, „Offene Entscheidungen“); auf hel gibt es kein App-Backup (kein `age`, kein Cron).
 
 ## Datenschutz-Leitplanken
 

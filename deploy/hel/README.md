@@ -1,14 +1,18 @@
 # Betrieb auf dem Proxmox-Wirt `hel` (congress.sgr.ski)
 
-Stand **2026-11-10**: Teilstand (Phase 1: db + osrm + api, **Hamburg**-Extrakt) läuft in **CT 220 `congress`**.
+Stand **2026-11-11**: Der Gesamtstand (db, osrm **Hamburg**-Extrakt, api, web, cleanup; Commit `edd0c2d`) läuft in **CT 220 `congress`**
+und ist unter https://congress.sgr.ski erreichbar (seit dem 10.11. nur die API-Liveness, seit dem 11.11. mit Oberfläche).
 Der Wirt und der Rand gehören zur Infrastruktur im Repository `patchletter.com` (`deploy/hel/`, dort
 `README.md` und `sgr/README.md`) – **dort nachlesen, nicht raten**. Keine Zugangsdaten, Schlüssel oder
 `.env`-Inhalte in dieses Repo oder in Chat-Protokolle.
 
 ```
 Internet ─▶ sgr (CT 180) 65.21.92.102 / [2a01:4f9:3b:44ad::126] :443   Caddy, TLS (Let's Encrypt)
-              └─ congress.sgr.ski ─▶ 10.10.10.80:8000   (CT 220 congress, Docker Compose)
+              └─ congress.sgr.ski ─▶ /api/*  → 10.10.10.80:8000   (CT 220 congress, Docker Compose)
+                                     sonst  → 10.10.10.80:8080   (Oberfläche)
                                        ├─ api  (FastAPI)           10.10.10.80:8000   ← nur von sgr erreichbar
+                                       ├─ web  (nginx, SPA)        10.10.10.80:8080   ← nur von sgr erreichbar
+                                       ├─ cleanup (Retention)      ohne Port
                                        ├─ db   (PostGIS 16)        127.0.0.1:55432
                                        └─ osrm (v26.4.0, Hamburg)  127.0.0.1:55000
 ```
@@ -21,7 +25,7 @@ Internet ─▶ sgr (CT 180) 65.21.92.102 / [2a01:4f9:3b:44ad::126] :443   Caddy
 | Ressourcen | 2 Kerne, **4 GB RAM-Kappe** (keine Reservierung), **kein Swap**, 24 GB `local-lvm` (online mit `pct resize` vergrößerbar) |
 | Netz | nur `vmbr1`: `10.10.10.80/24` (GW `10.10.10.1`), `2a01:4f9:3b:44ad:1::80/80`; keine öffentliche Adresse |
 | SSH | nur vom Wirt (`10.10.10.1`): `ssh -J hel -i ~/.ssh/patchletter_proxmox root@10.10.10.80`; Host-Key ED25519 `SHA256:vpy9DCWF0Z+lkjc6E9U+KyIx4xcZiY6UD/ccgENkl2g`; Notweg `ssh hel pct enter 220` |
-| Firewall | `nftables.conf` (Tabelle `inet gast`): 22 nur vom Wirt, 8000 nur von sgr (`10.10.10.70`), **forward-Regel** gegen das Umgehen durch Docker-DNAT |
+| Firewall | `nftables.conf` (Tabelle `inet gast`): 22 nur vom Wirt, 8000 und 8080 nur von sgr (`10.10.10.70`), **forward-Regel** gegen das Umgehen durch Docker-DNAT |
 | Code | `/opt/congress` (per `git archive` übertragen, kein Git/Token auf dem Server); `/opt/congress/.deployed-rev` = übertragener Commit |
 | Konfiguration | `/opt/congress/.env` (Rechte 600, Secrets zufällig auf dem Gast erzeugt, **nie ausgeben**) |
 
@@ -76,17 +80,19 @@ Der Block steht in `deploy/hel/sgr-caddy-block.Caddyfile` und wurde ans Ende von
 dortigen Muster: Sicherung → Datei neben die alte legen → `caddy validate` → `caddy reload` (kein Neustart; `m.` und
 `dns.` bleiben unterbrechungsfrei). Sicherung dieser Änderung auf CT 180: `/opt/sgr/caddy/etc/Caddyfile.vor-congress`.
 
-Im **Teilstand** reicht der Rand nur `/api/health` durch; `/`, `/api/docs`, `/api/openapi.json` und
-`/api/health/ready` liefern `503 „im Aufbau“` (die API selbst antwortet auf die ersten beiden in `production` ohnehin
-mit 404; `/api/health/ready` bleibt auch beim Öffnen des Rands von außen zu). Das wird mit Phase 6/7 geöffnet (Frontend, Security-Header,
-Rate-Limits).
+Seit 2026-11-11 reicht der Rand `/api/*` an die API (`10.10.10.80:8000`, Body-Limit 64 KB) und alles andere an den
+Web-Container (`10.10.10.80:8080`) durch. `/api/health/ready` ist von außen **404** (nur intern), `/api/docs` und
+`/api/openapi.json` sind in `production` 404. Die Härtungs-Snippets (`congress_edge_hardening`, `congress_error_pages`,
+`congress_block_ready`) stehen im Block selbst als unveränderte Kopie aus `caddy/edge-hardening.Caddyfile` (ein Test
+prüft die Gleichheit). Sicherungen auf CT 180: `Caddyfile.vor-congress` (vor dem ersten Block) und `Caddyfile.vor-8080`
+(vor dem Frontend).
 
-**Beim nächsten Ausrollen (Sicherheitsfix Login-Limits, auf `hel` noch nichts verändert):** Der Schlüssel
+**Login-Limits (seit 2026-11-11 ausgerollt):** Der Schlüssel
 `RATE_LIMIT_LOGIN_PER_EMAIL_PER_MIN` heißt jetzt `RATE_LIMIT_LOGIN_FAIL_PER_EMAIL_IP_PER_MIN` (5) und
 `RATE_LIMIT_LOGIN_FAIL_PER_EMAIL_PER_MIN` (30); ein alter Eintrag in der `.env` auf CT 220 wird still ignoriert
-(Standardwerte gelten) und kann entfernt werden. Details: `PLAN.md` Annahme 9.
+(Standardwerte gelten) und kann in der `.env` auf CT 220 entfernt werden (nicht geprüft, ob er dort steht). Details: `PLAN.md` Annahme 9.
 
-**Frontend freischalten (Phase 6, noch nicht ausgeführt):** (1) `make up` baut seit Phase 6 auch den Container `web` (Node-Build, nginx, Port 8080,
+**Frontend freischalten (ausgeführt am 2026-11-11, Schritte 1–3; Schritt 4 offen):** (1) `make up` baut seit Phase 6 auch den Container `web` (Node-Build, nginx, Port 8080,
 standardmäßig nur `127.0.0.1`); für den Rand `WEB_BIND=10.10.10.80` in `.env` setzen. (2) In `nftables.conf` Port 8080 wie 8000 nur für
 `10.10.10.70` öffnen (Eingabekette und `forward`-Regel, sonst umgehen veröffentlichte Docker-Ports die Kette). (3) Im Rand-Block
 `caddy/edge-hardening.Caddyfile` einbinden (Referrer-Policy je Zweig: SPA `strict-origin-when-cross-origin`, `/api` `no-referrer`,
@@ -113,13 +119,28 @@ Angelegt über den Cloudflare-MCP am 2026-11-10.
 | Bestehende Namen | `m.sgr.ski` 302 / Matrix-`versions` ok, `dns.sgr.ski` 200 – nach dem Reload unverändert |
 | Ressourcen danach | Gast: 233 MB RAM belegt, Platte 3,2 von 24 GB |
 
-**Nicht geprüft:** Deutschland-Extrakt; Last/Dauerbetrieb; `/api/health/ready` über den Rand (bewusst zu).
+**Frontend-Rollout 2026-11-11 (ausgeführt):**
+
+| Prüfung | Ergebnis |
+|---|---|
+| CI für `edd0c2d` | grün (api, ops, web, e2e, beide stack-Jobs) |
+| Firewall | `nft -c` ok, geladen; von sgr → `:8080/` **200**, vom Wirt hel → Zeitüberschreitung (curl-Exit 28); Sicherung `/etc/nftables.conf.vor-8080` |
+| Stack | api, web, db, osrm, cleanup **healthy**; OSRM neu erstellt (alte Logs weg) |
+| Rand | `caddy validate` ok, `caddy reload` ohne Neustart; `m.sgr.ski` 200, `dns.sgr.ski` 200 danach |
+| Öffentlich | `/` 200 mit CSP, Referrer-Policy, HSTS, `X-Frame-Options`, ohne `Server`; JS/CSS/SVG 200; SPA-Unterpfad 200; `/api/config` 200; `/api/health/ready` 404; `/api/docs` 404 |
+| Rand-Log | nach dem Reload nur der Admin-Eintrag von `127.0.0.1`, keine Besucher-IP |
+
+**Nicht geprüft:** Deutschland-Extrakt; Last/Dauerbetrieb; die Oberfläche im Browser auf hel (Playwright-Erweiterung
+nicht verfügbar; nur HTTP-Prüfung, keine Konten auf Produktion angelegt); IPv6 von außen (der Mac hat kein IPv6).
+Das Bundle von `edd0c2d` läuft mit dem OSM-Standard-Kartenserver (nur Entwicklung) und mit Platzhaltern in
+Datenschutzerklärung und Impressum (`web/src/i18n/de.ts`).
 
 ## Offene Entscheidungen für den Betreiber
 
 1. **Sicherung (PBS).** Neue Gäste landen automatisch im Job `taeglich` von `hel` (`all 1`, nur `exclude 210`),
-   also im PBS von patchletter mit bis zu 6 Monaten Aufbewahrung. Heute enthält die Datenbank **keine
-   Nutzerdaten**, deshalb ist das unkritisch. **Vor dem Live-Gang von Phase 2** entscheiden: Die App verspricht
+   also im PBS von patchletter mit bis zu 6 Monaten Aufbewahrung. Seit dem Frontend-Rollout (2026-11-11) kann
+   sich jeder registrieren – **Nutzerdaten landen ab dann in der PBS-Sicherung** (noch nicht entschieden).
+   **Zügig entscheiden:** Die App verspricht
    Backups mit kürzerer Aufbewahrung als die Retention der Nutzerdaten. Ausnehmen geht nur so, dass die bestehende
    Liste erhalten bleibt: `pvesh set /cluster/backup/taeglich --exclude 210,220` (ein Befehl **ersetzt** die Liste –
    fehlt die 210, landet Kali im PBS). Eigene Sicherung der App: `pg_dump` + age (Phase 7).
@@ -139,7 +160,7 @@ erzwingt das Löschen bewusst.
 ## Rückbau (vollständig, in dieser Reihenfolge)
 
 1. DNS: A- und AAAA-Eintrag `congress` bei Cloudflare löschen.
-2. Rand: `ssh hel "pct exec 180 -- cp /opt/sgr/caddy/etc/Caddyfile.vor-congress /opt/sgr/caddy/etc/Caddyfile"`, dann
+2. Rand: `ssh hel "pct exec 180 -- cp /opt/sgr/caddy/etc/Caddyfile.vor-congress /opt/sgr/caddy/etc/Caddyfile"` (für nur das Frontend zurück: `Caddyfile.vor-8080`), dann
    `caddy reload` im Container `sgr-caddy-1` (`--config /etc/caddy/Caddyfile --adapter caddyfile`); danach `m.`/`dns.` prüfen.
 3. Gast: `ssh hel 'pct stop 220 && pct destroy 220 --purge'`.
 4. Im Repo `patchletter.com` den Block aus `deploy/hel/sgr/Caddyfile` wieder entfernen.

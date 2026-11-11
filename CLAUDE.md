@@ -1,7 +1,7 @@
 # Mitfahrer-Matching 40C3 – Übergabe für Coding-Agenten
 
 Selbst gehostete Mitfahrer-Matching-App (FastAPI + PostGIS + OSRM, React/Vite/Leaflet-Frontend in `web/`, Caddy).
-Zielplattform: **Proxmox** (Docker Compose). Teilstand läuft seit 2026-11-10 in LXC 220 auf `hel` (https://congress.sgr.ski), Betrieb/Rückbau/Offenes: `deploy/hel/README.md`. Entscheidungen/Annahmen: `PLAN.md` (maßgeblich).
+Zielplattform: **Proxmox** (Docker Compose). Der Gesamtstand läuft seit 2026-11-11 in LXC 220 auf `hel` (https://congress.sgr.ski, Commit `edd0c2d`), Betrieb/Rückbau/Offenes: `deploy/hel/README.md`. Entscheidungen/Annahmen: `PLAN.md` (maßgeblich).
 
 ## Arbeitsstand
 
@@ -11,7 +11,7 @@ Siehe Phasen-Checkliste in `PLAN.md`. Jede Phase = ein Conventional-Commit, grü
 Nicht behobene niedrige Befunde und alle Betreiberentscheidungen stehen vollständig in `README.md` („Bekannte Grenzen und offene Punkte“) und `PLAN.md`
 („Offene Fragen für den Betreiber“) – dort weiterarbeiten, nicht hier duplizieren. Wichtigste offene Punkte: Platzhalter (Ort/Datum, Impressum, Datenschutztexte in
 `web/src/i18n/de.ts`), Tile-Server, SMTP/E-Mail-Verifikation, PBS/Backup auf hel, Deutschland-Extrakt (nur geschätzt), Oberfläche mit `docs/DATENSCHUTZ.md` angleichen.
-Auf hel ist nur der Teilstand von `97687a9` ausgerollt (nur `/api/health`); die späteren Fixes sind dort **nicht** ausgerollt.
+Auf hel ist seit 2026-11-11 Commit `edd0c2d` ausgerollt (inkl. Oberfläche und aller Audit-Fixes); danach gepushte Commits sind es nur, wenn `deploy/hel/README.md` es nennt.
 
 ## Befehle
 
@@ -52,7 +52,7 @@ Auf hel ist nur der Teilstand von `97687a9` ausgerollt (nur `/api/health`); die 
 
 - Nur CI-geprüfte Commits ausrollen (`deploy/hel/README.md`, „Anlegen“); SSH in **wenige gebündelte Sitzungen**;
   keine Schlüssel, `~/.ssh/config`- oder `.env`-Inhalte ins Repo/in Protokolle. Infos zum Wirt: Repo `patchletter.com`.
-- Der Rand-Caddy (CT 180) reicht im Teilstand nur `/api/health` durch – das Frontend (Phase 6) ist **nicht** ausgerollt; Block öffnen und `web` freischalten siehe `deploy/hel/README.md`.
+- Der Rand-Caddy (CT 180) reicht `/api/*` an die API und den Rest an den Web-Container; `/api/health/ready` ist extern zu. Noch offen auf hel: Kartenserver (`TILE_URL`/`TILE_ATTRIBUTION`) und Impressum/Datenschutz-Platzhalter, siehe `deploy/hel/README.md`.
 - **Vor dem Live-Gang:** PBS-Sicherung von CT 220 entscheiden (siehe `deploy/hel/README.md`, „Offene Entscheidungen“); auf hel gibt es kein App-Backup (kein `age`, kein Cron).
 
 ## Datenschutz-Leitplanken

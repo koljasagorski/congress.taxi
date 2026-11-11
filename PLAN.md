@@ -332,7 +332,7 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
   `docker-compose.proxy.yml`: Caddy `172.29.71.2`, API `172.29.71.129`, `TRUSTED_PROXIES=172.29.71.2`, API-Port nicht auf dem
   Host erreichbar, `/api/health/ready` über Caddy 404; danach `down -v`.
 - **Nicht lokal geprüft:** `shellcheck` (nicht installiert; läuft in der CI), Let's-Encrypt-Zertifikate (lokal interne CA),
-  Lauf auf `hel` (nichts ausgerollt), Last/Dauerbetrieb, mehrere Worker.
+  Last/Dauerbetrieb, mehrere Worker.
 
 ### Phase 6 (lokal: macOS arm64, Docker über Colima, echtes PostGIS + OSRM Hamburg)
 
@@ -350,7 +350,7 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
   Der `web`-Container läuft mit `read_only`, `cap_drop: ALL`. Danach alles wieder entfernt.
 - **Nicht geprüft:** Verhalten in einem echten Browser (der Playwright-Browser war in dieser Umgebung nicht verfügbar): CSP-Verstöße
   in der Konsole, Kartendarstellung, Tastaturbedienung – die Komponenten sind nur in jsdom getestet. Let's-Encrypt/TLS am `web`-Pfad.
-  Frontend auf `hel`: nicht ausgerollt, der Rand-Caddy reicht weiter nur `/api/health` durch (siehe `deploy/hel/README.md`).
+  Frontend auf `hel`: seit 2026-11-11 ausgerollt (Commit `edd0c2d`), per HTTP geprüft, nicht im Browser auf hel (siehe `deploy/hel/README.md`).
 
 ### Phase 8, Teil E2E (lokal: macOS arm64, Docker über Colima, echtes PostGIS + OSRM Hamburg + Chromium)
 

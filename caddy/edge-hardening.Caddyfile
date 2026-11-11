@@ -26,6 +26,11 @@
 #       import congress_edge_hardening strict-origin-when-cross-origin
 #       reverse_proxy 10.10.10.80:8080      # Container `web` (WEB_BIND, siehe deploy/hel/README.md)
 #   }
+#   import congress_error_pages              # PFLICHT, einmal im Site-Block, siehe unten
+# Logs: Eine fehlende `log`-Direktive heißt nur „kein Access-Log“. Caddy schreibt trotzdem jeden Fehler der
+# Stufe ERROR (`http.log.error`, z. B. bei jedem 502, wenn die API beim Ausrollen nicht erreichbar ist) mit
+# `remote_ip`, `client_ip`, URI samt Query-String (bei /api/match: lat/lon) und allen Headern. Erst ein
+# `handle_errors`-Block (Snippet `congress_error_pages`) unterdrückt diesen Eintrag.
 # img-src in der CSP unten nennt den Tile-Host: bei geändertem TILE_URL mitändern (im mitgelieferten Caddy
 # leitet caddy/tile-origin.sh ihn ab). Der öffentliche OSM-Tile-Server ist nur für Entwicklung vorgesehen.
 # TRUSTED_PROXIES der API muss dann 10.10.10.70 enthalten (setzt deploy/hel/ausrollen.sh), sonst
@@ -43,6 +48,16 @@
 		-Server
 	}
 
+}
+
+# Fehlerseiten für den Rand (einmal im Site-Block einbinden): knapp, ohne Details, mit denselben Sicherheits-Headern.
+# Ein `handle_errors`-Block unterdrückt außerdem den ERROR-Logeintrag mit IP und Query (siehe oben).
+#   import congress_error_pages
+(congress_error_pages) {
+	handle_errors {
+		import congress_edge_hardening no-referrer
+		respond "{err.status_code} {err.status_text}" {err.status_code}
+	}
 }
 
 # Sperre für den internen Bereitschaftspfad (als eigener `handle` vor den übrigen einbinden):

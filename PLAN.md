@@ -92,6 +92,15 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
    hel in jeder Sicherung von CT 220). Daher startet der Container mit `-l WARNING`; `test_osrm_does_not_log_request_urls`
    (`test_compose_config.py`) sichert das ab. Ein bereits laufender Container muss neu erstellt werden
    (`docker compose up -d --force-recreate osrm`), damit alte Logs mit Koordinaten verschwinden.
+   **Rand-Caddy (DS-2):** „Keine `log`-Direktive“ heißt nur „kein Access-Log“. Caddy schreibt auch dann jeden Fehler der Stufe
+   ERROR (`http.log.error`), z. B. bei jedem 502, wenn die API beim Ausrollen/Neustart nicht erreichbar ist, samt `remote_ip`,
+   `client_ip`, URI mit Query-String (bei `/api/match`: lat/lon) und allen Headern (auch `X-Forwarded-For`). Der Rand-Block
+   (`deploy/hel/sgr-caddy-block.Caddyfile`) hat deshalb ein `handle_errors`; die Vorlage `caddy/edge-hardening.Caddyfile` bringt das
+   Snippet `congress_error_pages` mit, das beim Freischalten von `/api/match` einzubinden ist. `test_security_edge_logging.py`
+   baut beides mit unerreichbarem Upstream nach und prüft das echte Caddy-Log (mit Positivkontrolle ohne `handle_errors`).
+   **Offen (anderes Repo):** Das Rand-Caddyfile auf hel (`patchletter.com`, `deploy/hel/sgr/Caddyfile`) bedient auch `m.`/`dns.`
+   und braucht dort denselben Schutz (`handle_errors` oder globaler Log-Filter); der Block für `congress.sgr.ski` dort ist beim
+   nächsten Ausrollen durch die Datei hier zu ersetzen. Auf hel nicht geändert.
 9. **Rate-Limit (Phase 7).** In-Memory, daher **ein** Uvicorn-Worker (dokumentierte Grenze). Echte
    Client-IP nur aus `X-Forwarded-For`, wenn der direkte Peer in `TRUSTED_PROXIES` steht – und dort steht
    **nur die feste Adresse des Proxys (/32)**, nie ein Docker-/LAN-Netz: Mit `COMPOSE_PROFILES=proxy` +

@@ -204,7 +204,7 @@ mit `404` (der Pfad belegt eine DB-Verbindung, ruft OSRM auf und nennt die PostG
 * Retention-Cleanup: `python -m app.cleanup [--dry-run] [--now ISO]`; löscht **alles** (Anfragen, Fahrten, Konten), sobald
   `jetzt > EVENT_END_DATE + RETENTION_DAYS_AFTER_EVENT` (Tagesende UTC); idempotent; Ausgabe nur Zählwerte.
 * Backups: `pg_dump` → `age -r $BACKUP_AGE_RECIPIENT`; Aufbewahrung `BACKUP_KEEP_DAYS` **kleiner** als die Retention.
-* Logs: kein Query-String, keine IP, keine E-Mail, keine Koordinaten – in allen Containern: `osrm-routed` läuft mit `-l WARNING` (im Standard INFO würde jede Anfrage mit Koordinaten in der URL protokolliert).
+* Logs: kein Query-String, keine IP, keine E-Mail, keine Koordinaten – in allen Containern: `osrm-routed` läuft mit `-l WARNING` (im Standard INFO würde jede Anfrage mit Koordinaten in der URL protokolliert); Caddy hat kein Access-Log, filtert sein Betriebslog und unterdrückt per `handle_errors` die ERROR-Einträge (`http.log.error`) mit IP, Header und Query-String – auch im Rand-Caddy (`deploy/hel/`).
 
 ## Frontend (Phase 6)
 

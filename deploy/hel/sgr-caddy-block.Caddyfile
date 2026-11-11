@@ -2,7 +2,11 @@
 # ── Mitfahrer-Matching 40C3 (congress.sgr.ski) — Stack in CT 220 `congress` ──
 # Ziel ist die API auf 10.10.10.80:8000 (Firewall dort: 8000 nur von sgr = 10.10.10.70, siehe
 # congress.taxi/deploy/hel/nftables.conf). Caddy terminiert TLS; es gibt bewusst keine `log`-Direktive
-# (Datenschutz: keine IPs/Query-Strings im Rand-Log).
+# (kein Access-Log). ACHTUNG: Das allein genügt NICHT für „keine IPs/Koordinaten im Log“: Caddy schreibt auch
+# ohne `log`-Direktive jeden Fehler der Stufe ERROR (`http.log.error`), z. B. bei jedem 502 (API beim
+# Ausrollen/Neustart nicht erreichbar), samt `remote_ip`, `client_ip`, URI mit Query-String (bei /api/match:
+# lat/lon) und allen Headern (auch X-Forwarded-For). Der Block `handle_errors` unten unterdrückt diesen Eintrag
+# und gibt eine knappe Fehlerseite aus; er darf nicht entfallen (api/tests/test_security_edge_logging.py).
 # TEILSTAND: Bis das Frontend (Phase 6) und die übrigen Routen live sind, geht nur der Liveness-Pfad
 # durch; alles andere – auch /api/docs, /api/openapi.json und /api/health/ready – bleibt zu.
 congress.sgr.ski {
@@ -20,5 +24,8 @@ congress.sgr.ski {
 	}
 	handle {
 		respond "congress.sgr.ski – im Aufbau" 503
+	}
+	handle_errors {
+		respond "{err.status_code} {err.status_text}" {err.status_code}
 	}
 }

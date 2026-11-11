@@ -1,6 +1,6 @@
 # PLAN – Mitfahrer-Matching für den 40C3
 
-Stand: 2026-11-11 · Status: **Phasen 1–7 und E2E abgeschlossen, Dokumentation (Phase 8) geschrieben, Abnahme steht aus** · Teilstand läuft auf Proxmox (hel, CT 220) unter https://congress.sgr.ski (nur `/api/health`)
+Stand: 2026-11-11 · Status: **Phasen 1–8 abgeschlossen, Abnahme am 2026-11-11 bestanden (Einschränkungen siehe „Phase 8, Teil Abnahme“)** · Teilstand läuft auf Proxmox (hel, CT 220) unter https://congress.sgr.ski (nur `/api/health`)
 
 Dieses Dokument hält Phasen, Annahmen, Entscheidungen und offene Punkte fest.
 Alles hier ist bewusst knapp; Details stehen im [README](README.md), die vollständige Liste der Grenzen dort im Abschnitt „Bekannte Grenzen und offene Punkte“,
@@ -261,14 +261,14 @@ Nicht blockierend für den Code, aber **vor dem Echtbetrieb** zu entscheiden. Qu
 - [x] **Phase 5** Anfragen/Accept mit Locking, Kontaktfreigabe (E-Mail erst bei `accepted`, nur Beteiligte; grobe Umweg-Werte)
 - [x] **Phase 6** Frontend (React/Vite/TypeScript/Leaflet, `web/`), Container `web`, Caddy liefert es aus, CI-Job `web`
 - [x] **Phase 7** Retention-Cleanup, Backup (age), Security-Header, Rate-Limits (IP, E-Mail, Nutzer), Caddy
-- [ ] **Phase 8** E2E-Tests, README, Datenschutzdoku, Aufräumen, Abnahme
+- [x] **Phase 8** E2E-Tests, README, Datenschutzdoku, Aufräumen, Abnahme
   - [x] E2E-Tests (`e2e/`, CI-Job `e2e`, 7 Tests im Stand dieser Runde)
   - [x] README (Überblick, Architektur, Quickstart, Konfiguration, OSRM, Deployment, Backup, Datenschutz, Matching, API, Tile-Server, Grenzen)
   - [x] Datenschutzdoku (`docs/DATENSCHUTZ.md`, Entwurf, kein Rechtsrat)
   - [x] Aufräumen der Dokumentation: Plan, Übergabe (`CLAUDE.md`), README; veraltete Verweise („Phase 1 von 8“, „ab Phase 8“, „in Phase 8“) entfernt (`git grep` ohne Treffer), Links und Pfade geprüft. `deploy/hel/README.md`
     bewusst unverändert (dort stehen noch Zukunftsformulierungen wie „mit Phase 6/7 geöffnet“, siehe README B-4)
-  - [ ] **Abnahme** (offen: Die Abnahme prüft den Stand von `origin/main`, bestätigt die Punkte oben und ergänzt hier **nur noch den Haken**. Sie darf
-    „Phase 8 erledigt“ erst melden, wenn CI auf dem Commit „docs: Phase 8 …“ grün ist und README-Befehle sowie Datenschutz-Aussagen stichprobenartig gegen Code/Ausführung bestätigt sind.)
+  - [x] **Abnahme** (2026-11-11, frischer Klon von `origin/main`, CI auf dem Commit „docs: Phase 8 …“ grün, README-Befehle und Datenschutz-Aussagen stichprobenartig
+    ausgeführt; Ablauf, Zahlen und Grenzen in „Phase 8, Teil Abnahme“ unten)
 
 Jede Phase: eigener Conventional-Commit, grüne Tests, sofort pushen.
 
@@ -389,6 +389,40 @@ Im Repo selbst: `make lint` grün (ruff, ruff format, mypy), `REQUIRE_OPS_TESTS=
 `make e2e`: **7 passed** (Chromium; ein Test mehr als in der E2E-Runde oben, die Registrierungs-Formularprüfung in `01-konto-und-fahrt.spec.ts`).
 **Nicht** ausgeführt: `cp .env.example .env`-Pfad (nur CI-belegt, mit Hamburg), Deutschland-Extrakt, Coolify, Lauf auf `hel`.
 Gefunden: Ein Bind-Mount aus dem Scratchpad ist unter Colima leer (siehe `CLAUDE.md`); das Log des Datenbank-Containers enthält bei Constraint-Verletzungen Zeileninhalt (README D-5).
+
+### Phase 8, Teil Abnahme (2026-11-11, macOS arm64, Docker über Colima, Hamburg-Extrakt)
+
+Geprüft wie ein Fremder: `git clone https://github.com/koljasagorski/congress.taxi.git` (Stand `71bc49c`), nur den Anweisungen im README folgend, eigenes `COMPOSE_PROJECT_NAME`
+(`abnahme`) und eigene Hostports neben dem Dev-Stack (der unberührt blieb).
+
+- **Quickstart:** `make env DEV=1` → `make osrm-prepare` (Download 51,6 MiB, MD5 geprüft, ≈ 16 s) → `make up` (alle 5 Dienste healthy, ≈ 19 s) → `/api/health/ready` ok.
+  Der wörtliche Auftragspfad `cp .env.example .env && make osrm-prepare && make up` lief ebenfalls (mit den auf arm64/Hamburg nötigen Änderungen `POSTGIS_IMAGE`,
+  `OSRM_PBF_URL`, Ports): „Platzhalter-Secrets ersetzt“, 5 Dienste healthy, `APP_ENV=production` (`/api/docs` 404, Cookie `HttpOnly; SameSite=strict; Secure`,
+  `make seed-demo` verweigert den Lauf in Produktion).
+- **Demo-Szenario (HTTP, `make seed-demo` davor: 7 Konten, 6 Fahrten, Kontrollsuche 6 Treffer):** Registrierung (ohne `consent` 422) → Fahrer legt Fahrt an (Bergedorf, 201) → Mitfahrer findet sie
+  mit realem Umweg (Billstedt 2,0 km/5 min, Wandsbek 3,5 km/7 min, Altona 9,0 km/18 min, Wilhelmsburg 12,5 km/13 min; München 422 `outside_coverage`) → Anfrage 201 → vor der Annahme
+  `counterpart_email` null auf beiden Seiten und keine Adresse in Listen oder Treffern; Mitfahrer darf nicht annehmen (404) → Fahrer nimmt an → **erst jetzt** sehen beide die E-Mail
+  des anderen; Fahrt `full`, taucht in der Suche nicht mehr auf.
+- **Retention:** `make cleanup DRY=1` zählte `ride_requests=1 rides=7 users=9`; `make cleanup` löschte genau das; `users`, `rides`, `ride_requests` danach 0 (die übrigen Tabellen sind PostGIS-Systemtabellen),
+  zweiter Lauf `0/0/0`. Wichtig: Der Test setzte in `.env` **`EVENT_START_DATE=2026-11-01`, `EVENT_END_DATE=2026-11-10` und `RETENTION_DAYS_AFTER_EVENT=0`** (Frist abgelaufen seit 2026-11-11T00:00Z); die Daten
+  entstanden am selben Tag, also innerhalb der Karenz von einem Tag (OPS-4), deshalb ohne `--confirm-expired`. Gelöscht hat der einmalige Aufruf `make cleanup`, nicht die 6-Stunden-Schleife des
+  Dienstes `cleanup`.
+- **Backup/Restore:** `make backup` (82 399 Bytes, `age`) → `make restore` in neue Datenbank: 9 Konten, 7 Fahrten, 1 Anfrage wie in der Quelle; zweiter Aufruf ohne `--replace` verweigert, mit `--replace` ok;
+  `make purge-backups` vor der Frist „nichts zu löschen“, mit abgelaufener Frist „1 Backup(s) gelöscht, kein neues angelegt“.
+- **Logs:** API-, web-, osrm- und cleanup-Logs des Laufs (E-Mails, Koordinaten, Anfragen) enthalten keine E-Mail-Adresse, keine Koordinate und keine IP (Mustersuche, 0 Treffer).
+- **Zahlen:** `make lint` grün; `REQUIRE_OPS_TESTS=1 make test` **839 passed** (≈ 130 s, nichts übersprungen); `make web-check` grün (Vitest 9 Dateien / 102 Tests); `make e2e` **7 passed**.
+  CI auf `71bc49c`: `api`, `ops`, `web`, `e2e`, `stack (make-env-dev)`, `stack (cp-env-example)` alle success.
+
+**Befunde und Behebung.**
+1. `make web-check` scheiterte im frischen Klon („This is not the tsc command you are looking for“), weil `npm ci` fehlte und der Quickstart `make web-install` nicht nannte → `web-check`
+   installiert fehlende Abhängigkeiten jetzt selbst (Commit `68384d1`); im Klon ohne `web/node_modules` erneut geprüft: grün (102 Tests).
+2. `e2e/stack.sh` hatte Projektname und Netz fest verdrahtet; ein zweiter Klon hätte den noch laufenden E2E-Stack eines anderen Checkouts übernommen → `E2E_PROJECT` und `E2E_SUBNET`
+   (Commit `16b6652`); mit `E2E_PROJECT=abnahme-e2e` neben dem laufenden `mitfahrer-e2e` lief `make e2e` (7 passed, auch ohne `.env`), der fremde Stack blieb unberührt.
+3. README, PLAN und CLAUDE.md nannten „Docker Desktop“; auf dem Rechner läuft Colima, das nur `$HOME` in die VM spiegelt. Folge: Im Klon unter `/private/tmp` waren Bind-Mounts leer
+   (`osrm-prepare` scheiterte; `make test` dort: 823 passed, **5 failed, 11 errors**, alle in den Caddy-Tests). Derselbe Commit unter `$HOME`: 839 passed. Docs korrigiert, Hinweis im Quickstart.
+
+**Nicht geprüft (bleibt offen):** echtes Let's Encrypt/öffentliches TLS, Deutschland-Extrakt (nur Hamburg), Lasttest, Ausrollen auf `hel` (kein SSH in der Abnahme), ein frischer
+Linux/amd64-Host (nur das CI auf `ubuntu-latest` belegt ihn; lokal lief alles auf arm64), PBS-Sicherung von CT 220, Firefox/WebKit, echte Kartenkacheln, rechtliche Texte (Datenschutz/Impressum sind Entwürfe).
 
 **Korrektur zu Commit `6851a93`:** Der Commit-Text nennt „12 neue Tests“; tatsächlich sind es 14 (9 in `test_cleanup.py`, 3 in `test_config.py`, 2 für das Backup-Skript). Der Text bleibt (kein Force-Push).
 

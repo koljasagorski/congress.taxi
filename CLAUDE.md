@@ -7,7 +7,7 @@ Zielplattform: **Proxmox** (Docker Compose). Teilstand läuft seit 2026-11-10 in
 
 Siehe Phasen-Checkliste in `PLAN.md`. Jede Phase = ein Conventional-Commit, grüne Tests, sofort pushen.
 
-**Stand 2026-11-11:** Phasen 1–7, E2E (`e2e/`) und die Dokumentation von Phase 8 sind fertig; **offen ist nur die Abnahme** (sie ergänzt in `PLAN.md` den letzten Haken).
+**Stand 2026-11-11:** Phasen 1–8 sind fertig und in einem frischen Klon abgenommen (`PLAN.md`, „Phase 8, Teil Abnahme“; dort auch, was **nicht** geprüft wurde).
 Nicht behobene niedrige Befunde und alle Betreiberentscheidungen stehen vollständig in `README.md` („Bekannte Grenzen und offene Punkte“) und `PLAN.md`
 („Offene Fragen für den Betreiber“) – dort weiterarbeiten, nicht hier duplizieren. Wichtigste offene Punkte: Platzhalter (Ort/Datum, Impressum, Datenschutztexte in
 `web/src/i18n/de.ts`), Tile-Server, SMTP/E-Mail-Verifikation, PBS/Backup auf hel, Deutschland-Extrakt (nur geschätzt), Oberfläche mit `docs/DATENSCHUTZ.md` angleichen.

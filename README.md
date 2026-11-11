@@ -5,9 +5,9 @@ geben ihren Abholpunkt auf der Karte an und bekommen passende Fahrten angezeigt.
 Umweg** (OSRM), nicht die Luftlinie. Kontaktdaten (E-Mail) werden erst nach beidseitiger Bestätigung freigegeben,
 alle Daten werden nach der Veranstaltung automatisch gelöscht.
 
-> **Stand (2026-11-11):** Funktionsumfang der Phasen 1–7 und die E2E-Tests sind integriert, das CI auf `main` ist
-> grün. Mit diesem Dokument ist der Dokumentationsteil von Phase 8 geschrieben; die **Abnahme** steht aus
-> (siehe [`PLAN.md`](PLAN.md)). **Nicht betriebsbereit für echte Nutzer**, solange die Platzhalter für Datenschutz,
+> **Stand (2026-11-11):** Funktionsumfang der Phasen 1–7, die E2E-Tests und die Dokumentation sind integriert, das CI auf `main`
+> ist grün, die **Abnahme** in einem frischen Klon ist bestanden (Ablauf, Zahlen und Grenzen: „Phase 8, Teil Abnahme“ in
+> [`PLAN.md`](PLAN.md)). **Nicht betriebsbereit für echte Nutzer**, solange die Platzhalter für Datenschutz,
 > Impressum, Ort und Datum des Kongresses sowie die Kartenserver-Frage offen sind (Abschnitt
 > [Bekannte Grenzen und offene Punkte](#bekannte-grenzen-und-offene-punkte)).
 
@@ -149,7 +149,8 @@ belegt.
 > `COOKIE_SECURE=true`, Extrakt `germany-latest` mit ≈ 4,9 GB Download). `make up` ersetzt die Platzhalter-Secrets
 > (`CHANGE_ME`) automatisch durch Zufallswerte; ohne diesen Schritt verweigert die API in Produktion den Start. Für
 > Hamburg `OSRM_PBF_URL=https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf` setzen. Belegt ist dieser Pfad
-> durch das CI (Matrix `make-env-dev` / `cp-env-example`, mit Hamburg) **[T]**, nicht durch einen Lauf in dieser Runde.
+> durch das CI (Matrix `make-env-dev` / `cp-env-example`, mit Hamburg) **[T]** und durch einen Lauf in der Abnahme **[A]** (auf arm64 zusätzlich
+> `POSTGIS_IMAGE=imresamu/postgis:16-3.5-bookworm`, siehe [Konfiguration](#konfiguration)).
 
 ### Oberfläche im Browser: `make up-proxy` statt `make up`
 
@@ -515,7 +516,7 @@ vermeiden. Eine Adresssuche (Photon/Nominatim) ist bewusst nicht angebunden, wei
 | Frontend | `make web-check` | `tsc`, ESLint (inkl. jsx-a11y), Vitest, Build, `check:external` |
 | E2E | `make e2e` | Playwright (Chromium) gegen den echten Stack mit Caddy: Konto + Fahrt, Mitfahrt + Kontaktfreigabe, Konto löschen, keine externen Requests + Tastatur, Reflow bei 360 px |
 
-Stand 2026-11-11 **[A]**: `make lint` grün; `REQUIRE_OPS_TESTS=1 make test`: **839 passed** (68 s, nichts übersprungen); `make web-check` grün (Vitest: 102 Tests); `make e2e`: **7 passed** (Chromium). Einzelheiten im Abschnitt „Phase 8, Teil Dokumentation“ in [`PLAN.md`](PLAN.md). CI (GitHub Actions, `ubuntu-latest`): Jobs `api`, `stack` (frischer Stack inkl. beider
+Stand 2026-11-11 **[A]**: `make lint` grün; `REQUIRE_OPS_TESTS=1 make test`: **839 passed** (68 s, nichts übersprungen); `make web-check` grün (Vitest: 102 Tests); `make e2e`: **7 passed** (Chromium); in der Abnahme (frischer Klon) dieselben Zahlen: 839 passed, Vitest 102 Tests, 7 E2E. Einzelheiten in den Abschnitten „Phase 8, Teil Dokumentation“ und „Teil Abnahme“ in [`PLAN.md`](PLAN.md). CI (GitHub Actions, `ubuntu-latest`): Jobs `api`, `stack` (frischer Stack inkl. beider
 `.env`-Wege), `ops` (shellcheck, Backup-Roundtrip, Compose-Konfiguration, Caddy), `web`, `e2e`. Ein Lauf auf einer echten Proxmox-VM bleibt für den Betreiber zu bestätigen; lokal stand kein
 frischer Linux-Host zur Verfügung, der Nachweis ist das CI auf `ubuntu-latest` (amd64).
 

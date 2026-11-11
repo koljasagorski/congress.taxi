@@ -62,6 +62,22 @@ und optionalen Links `<a href="https://…">…</a>`; das Frontend lässt nur da
 unter der Karte. Sie gehört zum Kartenserver aus `tile_url` und ist beim Wechsel mitzuändern. Der öffentliche OSM-Tile-Server
 ist laut Tile Usage Policy nur für Entwicklung gedacht; `TILE_URL` bleibt frei konfigurierbar, die CSP (`img-src`) folgt ihr.
 
+## Adresssuche (Erweiterung, optional) – Anmeldung erforderlich
+
+Änderungsanfrage vom 2026-11-11 (Betreiberwunsch: Adresse zusätzlich zur Punktwahl per Karte/Koordinaten). Die Funktion ist
+nur aktiv, wenn `map.geocoder` = `"nominatim"` ist (Umgebungsvariable `GEOCODER`); sonst antwortet der Endpunkt 404
+`geocoder_disabled` und die Oberfläche zeigt keine Suche. `"photon"` ist nicht angebunden und wirkt wie `"none"`.
+
+`GET /api/geocode?q=<Text>` → 200 `{"items":[{"label":str,"lat":float,"lon":float}, …]}` (höchstens 5, nur Deutschland, ggf. leer).
+
+- `q`: 3 bis 200 Zeichen (nach Zusammenfassen von Leerraum), sonst 422 `validation_error`.
+- Fehler: 401 ohne Anmeldung; 404 `geocoder_disabled`; 429 `rate_limited` (Standard 10 je Minute und Nutzer,
+  `RATE_LIMIT_GEOCODE_USER_PER_MIN`); 503 `geocoder_busy` (Drosselung auf 1 Anfrage/s zum Dienst, Warteschlange zu lang) und
+  503 `geocoder_unavailable` (Dienst nicht erreichbar oder unbrauchbare Antwort).
+- Datenschutz: Der Suchtext wird nicht gespeichert, nicht protokolliert und nicht in Fehlern wiederholt. Der Geocoder-Dienst
+  erhält nur die Serveradresse. Treffer werden bis zu `GEOCODER_CACHE_TTL_S` (600 s) im Arbeitsspeicher gehalten, **je Nutzer**.
+  Die Antwort enthält nur Beschriftung und Kartenpunkt; gespeichert wird später allein der gewählte Punkt.
+
 ## Fahrten (Phase 3) – alle Endpunkte erfordern Anmeldung
 
 **RideOut** (Sicht der Fahrerin/des Fahrers auf die eigene Fahrt):

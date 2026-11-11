@@ -28,6 +28,7 @@ suchen und fragen an; erst nach Annahme einer Anfrage sehen sich beide die E-Mai
 |---|---|---|---|---|---|
 | V1 | Konto anlegen und anmelden | Zugang zur Vermittlung | E-Mail, Anzeigename, Passwort-Hash, Zeitpunkt der Einwilligung | Einwilligung, Art. 6 Abs. 1 lit. a | bis Selbstlöschung, sonst Stichtag (Abschnitt 9) |
 | V2 | Fahrt anbieten | Vermittlung | Startpunkt, Zielpunkt, Route, Abfahrt, Plätze, Status | Einwilligung, Art. 6 Abs. 1 lit. a (ggf. zusätzlich lit. b, Vertragsanbahnung; zu prüfen) | wie V1 |
+| V3a | Adresssuche (optional) | Punkt per Adresse setzen | Suchtext (flüchtig; geht über unseren Server an den Adressdienst), Treffer im Arbeitsspeicher | Einwilligung, Art. 6 Abs. 1 lit. a (zu prüfen) | höchstens 10 Minuten, nicht persistent |
 | V3 | Mitfahrt suchen | Vermittlung | Abholpunkt (nur flüchtig für die Abfrage, nicht gespeichert), Zeitfenster | wie V2 | nicht gespeichert |
 | V4 | Anfrage stellen, annehmen, ablehnen | Vermittlung | Abholpunkt, Umweg, Status, Zeitstempel | wie V2 | wie V1 |
 | V5 | Kontaktfreigabe | Verabredung ermöglichen | E-Mail des jeweils anderen, erst nach Annahme | Einwilligung (Annahme durch beide), Art. 6 Abs. 1 lit. a | wie V1 |
@@ -75,9 +76,9 @@ Quelle: `api/app/models.py` und die Migration `api/alembic/versions/0001_initial
 | `status` | `pending`, `accepted`, `declined`, `cancelled` |
 | `created_at`, `decided_at` | Zeitstempel |
 
-**Nicht gespeichert** (Schema und Code geprüft): Klartext-Adressen (Adressen werden nie eingegeben; Orte werden als Kartenpunkt gesetzt), Kennzeichen, Telefonnummern, IP-Adressen
+**Nicht gespeichert** (Schema und Code geprüft): Klartext-Adressen (gespeichert wird nur der Kartenpunkt; bei aktiver Adresssuche wird ein Suchtext flüchtig verarbeitet, aber nie gespeichert oder protokolliert, siehe Abschnitt 7), Kennzeichen, Telefonnummern, IP-Adressen
 (weder in der Datenbank noch im Anwendungslog), Gerätekennungen, Standortverläufe. Das Frontend ruft die Geolocation-API des Browsers nicht auf (Suche in `web/src` ohne Treffer);
-die Position wird nur durch Klick auf die Karte, die Kartenmitte oder eingetippte Koordinaten gesetzt.
+die Position wird durch Klick auf die Karte, die Kartenmitte, eingetippte Koordinaten oder (optional) die Adresssuche gesetzt.
 
 **Technische Daten außerhalb der Datenbank**
 
@@ -118,6 +119,7 @@ Die Freigabe setzt auf einer **nicht bestätigten** Adresse auf: Es kann sein, d
 |---|---|---|---|
 | Hosting/Betreiber der Server (`[Hoster eintragen]`; im Teilstand ein Proxmox-Wirt mit Rand-Caddy) | alle Daten des Betriebs, Netzverkehr (IP-Adressen auf Netzebene) | Auftragsverarbeiter oder eigener Betrieb | AV-Vertrag nach Art. 28 DSGVO, falls ein externer Hoster beteiligt ist |
 | **Kartenserver** (`TILE_URL`, `[Anbieter eintragen]`) | der **Browser** der Nutzerin sendet **IP-Adresse**, die **Kachelkoordinaten** des angezeigten Ausschnitts (damit die Gegend von Start- und Abholpunkt) und die Origin der Seite als Referer. Nicht: Konto-, Fahrt- oder Anfragedaten, die gesetzten Punkte selbst (die Zoomstufe bei der Punktwahl ist auf 16 begrenzt) | eigene Verantwortung des Kartenanbieters oder Auftragsverarbeiter, je nach Konstruktion | beim Anbieter klären; bei einem **eigenen** Kartenserver hinter der eigenen Origin entfällt die Weitergabe an Dritte |
+| **Adressdienst** (nur bei `GEOCODER=nominatim`: Nominatim von OpenStreetMap, `GEOCODER_URL`) | der **Server** (nicht der Browser) sendet den **Suchtext der Nutzerin** (eine Adresse oder einen Ort) und seine eigene Adresse; keine Cookies, kein Referer, keine Nutzer-ID. Der Browser kontaktiert den Dienst nie. Der Suchtext wird bei uns weder gespeichert noch protokolliert; Treffer liegen bis zu 10 Minuten im Arbeitsspeicher, je Nutzer getrennt | eigene Verantwortung des Dienstbetreibers; bei einem **eigenen** Nominatim-Server entfällt die Weitergabe an Dritte | Nutzungsregeln des Dienstes (1 Anfrage/s, erkennbare Kennung) werden eingehalten; Datenschutzhinweise des Betreibers prüfen `[Rechtlich prüfen.]` |
 | Zertifizierungsstelle (Let's Encrypt, nur bei Caddy mit öffentlicher Domain) | Domainname bei der Zertifikatsausstellung | kein Nutzerbezug | – |
 | DNS-Anbieter (`[Anbieter eintragen]`) | Domainname | kein Nutzerbezug | – |
 | Sicherungsdienst der Plattform (z. B. PBS auf dem Proxmox-Wirt) | Abbild des Gasts, **einschließlich der Datenbank** | Teil des Hostings | siehe Abschnitt 9 und 11 (R-6) |
@@ -218,6 +220,7 @@ knapp ist**. Die Oberfläche wurde in dieser Runde **nicht** geändert:
 | `privacy.s9` „Bekannte Grenzen“ | nur: E-Mail-Adressen werden nicht bestätigt | Abtasten des Fahrerstarts (R-1), nicht widerrufbare Sitzung (R-4), fehlender Passwort-Reset, Logs/Sicherungen (R-5, R-6) |
 | `privacy.s5` „Speicherdauer“ | „Sicherungskopien werden verschlüsselt und nur kurz aufbewahrt“ | tatsächliche Dauern; Hinweis, dass die Löschung bis zu 6 h nach dem Stichtag erfolgt und dass Plattform-Sicherungen länger bestehen können; „endgültig gelöscht“ differenzieren (Abschnitt 9) |
 | `privacy.s3` „Zweck und Rechtsgrundlage“ | nur Einwilligung | ggf. lit. b/lit. f (Abschnitt 8) nach rechtlicher Prüfung |
+| `privacy.s7geo` „Adresssuche“ | **ergänzt** (erscheint nur bei `GEOCODER=nominatim`): Suchtext geht über unseren Server an Nominatim; nicht gespeichert | rechtlich prüfen; Abschnitt 7 ist maßgeblich |
 | `privacy.s8` „Deine Rechte“ | verweist auf den Verantwortlichen | ehrlich benennen: kein Selbst-Export, keine Änderungsfunktion; Ablauf für Anfragen |
 | `privacy.s1`, `s8`, `imprint.*` | Platzhalter | Verantwortlicher, Kontakt, Aufsichtsbehörde, Anbieterangaben nach § 5 DDG |
 

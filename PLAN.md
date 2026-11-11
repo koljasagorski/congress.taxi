@@ -202,7 +202,8 @@ danach dauerhaft 12 GB RAM für den Gast. Der Deutschland-Extrakt läuft seit 20
     https-Links zu. Der öffentliche OSM-Tile-Server bleibt **nur Entwicklung**; `TILE_URL`/`TILE_ATTRIBUTION` sind konfigurierbar,
     die CSP folgt `TILE_URL`. **Referrer-Policy:** SPA `strict-origin-when-cross-origin`, `/api` und Fehlerseiten `no-referrer`
     (Caddy setzt die Header je `handle`-Zweig; ein Site-weiter Block würde wegen `-Server` zurückgestellt laufen und `/api` überstimmen).
-    Geocoder (Photon/Nominatim) sind bewusst nicht angebunden (externe Anfragen aus dem Browser).
+    Adresssuche (Betreiberwunsch 2026-11-11): optional, nur serverseitig über `GET /api/geocode` mit Nominatim (`GEOCODER=nominatim`,
+    Standard aus); der Browser fragt nie einen Geocoder direkt (Adressen/IP gingen sonst an Dritte). Photon ist nicht angebunden.
 20. **Scheinfahrten und das Kandidatenlimit (SEC-1).** Die Kandidaten werden nach Luftlinie sortiert und auf
     `MATCH_MAX_CANDIDATES` (30) gekürzt; ohne weitere Sperre könnte ein Konto mit ≥ 30 Fahrten exakt am Abholpunkt alle
     Plätze belegen und echte Fahrer aus dem Ergebnis verdrängen. Sperren: (a) `MAX_OPEN_RIDES_PER_DRIVER` (5): offene oder

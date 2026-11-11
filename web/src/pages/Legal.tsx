@@ -13,7 +13,7 @@ function Draft({ children }: { children: string }) {
   );
 }
 
-const PRIVACY_SECTIONS = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9"] as const;
+const PRIVACY_SECTIONS = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s7geo", "s8", "s9"] as const;
 
 export function PrivacyPage() {
   const { t } = useI18n();
@@ -29,7 +29,7 @@ export function PrivacyPage() {
     <article aria-labelledby="privacy-title">
       <h1 id="privacy-title">{t("privacy.title")}</h1>
       <Draft>{t("privacy.draftNotice")}</Draft>
-      {PRIVACY_SECTIONS.map((s) => (
+      {PRIVACY_SECTIONS.filter((s) => s !== "s7geo" || config?.map.geocoder === "nominatim").map((s) => (
         <section key={s} aria-labelledby={`privacy-${s}`}>
           <h2 id={`privacy-${s}`}>{t(`privacy.${s}.title` as MessageKey)}</h2>
           <p>

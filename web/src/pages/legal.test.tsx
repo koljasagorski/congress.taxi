@@ -25,6 +25,25 @@ describe("Rechtstexte", () => {
     expect(text).not.toMatch(/\[[^\]]+\]/);
   });
 
+  it("Datenschutz nennt die Adresssuche nur, wenn sie aktiv ist", async () => {
+    mockApi(baseRoutes());
+    const { unmount } = renderApp("/datenschutz");
+    await screen.findByRole("heading", { level: 1, name: "Datenschutzerklärung" });
+    expect(screen.queryByRole("heading", { name: "Adresssuche" })).not.toBeInTheDocument();
+    unmount();
+
+    mockApi({
+      ...baseRoutes(),
+      "GET /api/config": { body: { ...CONFIG, map: { ...CONFIG.map, geocoder: "nominatim" } } },
+    });
+    renderApp("/datenschutz");
+    expect(await screen.findByRole("heading", { name: "Adresssuche" })).toBeInTheDocument();
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("nicht an einen Dritten");
+    expect(text).toContain("Gespeichert wird später nur der gewählte Kartenpunkt");
+    expect(text).not.toMatch(/\[[^\]]+\]/);
+  });
+
   it("Datenschutz beschreibt bei relativer TILE_URL den Kachel-Proxy", async () => {
     mockApi({
       ...baseRoutes(),

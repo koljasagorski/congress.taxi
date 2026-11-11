@@ -40,7 +40,7 @@ die Route zum Kongressort per OSRM und speichert sie. Ein Mitfahrer setzt seinen
 (konfigurierbar). Der Mitfahrer fragt an, die Fahrerin nimmt an oder lehnt ab; erst nach der Annahme sehen beide die
 E-Mail-Adresse des anderen.
 
-**Bewusst nicht enthalten:** Chat, Zahlungen, Push-Nachrichten, Bewertungen, Adress-Suche (Geocoder), E-Mail-Versand
+**Bewusst nicht enthalten:** Chat, Zahlungen, Push-Nachrichten, Bewertungen, E-Mail-Versand
 (deshalb auch keine E-Mail-Bestätigung und kein Passwort-Reset).
 
 | Schicht | Technik |
@@ -244,7 +244,12 @@ an die Container gereicht (`api` und `cleanup` lesen `.env` per `env_file`; die 
 |---|---|---|
 | `TILE_URL` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | Kachelserver. Der öffentliche OSM-Server ist **nur für Entwicklung** gedacht, siehe [Tile-Server](#tile-server-karten). Der Host wird automatisch in die CSP (`img-src`) übernommen. `/tiles/{z}/{x}/{y}.png` (relativ) schaltet den **Kachel-Proxy** des Web-Containers ein (Betrieb auf `hel`) |
 | `TILE_ATTRIBUTION` | OSM-Mitwirkende (im Code hinterlegt) | Quellenangabe unter der Karte; erlaubt sind Text und `<a href="https://…">`-Links. Beim Wechsel des Kartenservers anpassen |
-| `GEOCODER` | `none` | `photon`/`nominatim` werden wie `none` behandelt (siehe Grenzen) |
+| `GEOCODER` | `none` | `nominatim` schaltet die **Adresssuche** ein (`GET /api/geocode`, serverseitiger Proxy; siehe [Adresssuche](#adresssuche)). `photon` ist nicht angebunden und wirkt wie `none` |
+| `GEOCODER_URL` | `https://nominatim.openstreetmap.org` | Nominatim-Server. Der öffentliche Dienst erlaubt höchstens 1 Anfrage/s (wird eingehalten); bei viel Last einen eigenen Server eintragen |
+| `GEOCODER_COUNTRY_CODES` | `de` | Treffer nur aus diesen Ländern (Alpha-2, Komma-getrennt) |
+| `GEOCODER_USER_AGENT` | `mitfahrer-matching-40c3/0.1 (self-hosted ride matching)` | Kennung gegenüber dem Dienst (ohne Betreiber-Kontaktdaten; bei Bedarf ergänzen) |
+| `GEOCODER_TIMEOUT_S`, `GEOCODER_CACHE_TTL_S` | `5`, `600` | Zeitlimit je Anfrage; Cache-Dauer der Treffer (Arbeitsspeicher, je Nutzer) |
+| `RATE_LIMIT_GEOCODE_USER_PER_MIN` | `10` | Adresssuchen je Nutzer und Minute |
 
 **Anmeldung und Herkunftsprüfung**
 
@@ -406,6 +411,20 @@ Restore **[A]** (Backup eines Dev-Stacks mit 7 Konten, Ziel eine *neue* Datenban
 `--yes-overwrite-production`. **Nach jedem Restore** `make cleanup` ausführen (abgelaufene Daten) und beachten: Ein Restore bringt auch Konten zurück, die
 Nutzer seitdem per `DELETE /api/me` gelöscht haben; sie müssen erneut entfernt werden.
 
+## Adresssuche
+
+Optional (`GEOCODER=nominatim`, Standard aus): Über der Karte steht ein Feld „Adresse oder Ort suchen“. Die Suche läuft per Button
+oder Enter (nicht bei jedem Tastendruck), zeigt bis zu 5 Treffer in Deutschland und setzt bei Auswahl den Punkt und die
+Kartenmitte; der Punkt lässt sich danach noch verschieben. Karten-Klick, Kartenmitte und Koordinaten bleiben gleichwertig.
+
+- **Weg der Eingabe:** Browser → eigene API (`GET /api/geocode`, nur angemeldet) → Nominatim. Der Browser kontaktiert den Dienst nie
+  direkt; der Dienst sieht nur die Serveradresse, aber den Suchtext. Der Suchtext wird nicht gespeichert und nicht protokolliert
+  (kein Query-Log, httpx-Log aus). Treffer liegen bis zu 10 Minuten im Arbeitsspeicher, **getrennt je Nutzer** (ein gemeinsamer
+  Cache würde über die Antwortzeit verraten, was andere suchten). Gespeichert wird weiterhin nur der gewählte Kartenpunkt.
+- **Drosselung:** 1 Anfrage/s zum Dienst (Nutzungsregel des öffentlichen Nominatim); bei langer Warteschlange 503 `geocoder_busy`.
+- **Einschalten auf hel:** `GEOCODER=nominatim` in der `.env` des Gasts und die API neu starten; der Datenschutztext in der Oberfläche
+  erscheint dann automatisch (`privacy.s7geo`). Die CSP bleibt unverändert, weil der Browser nur die eigene Origin anspricht.
+
 ## Datenschutzkonzept
 
 Kurzfassung; die ausführliche Vorlage einer Datenschutzerklärung (Entwurf, kein Rechtsrat) steht in
@@ -564,7 +583,7 @@ Ehrlich und vollständig, soweit bekannt. Spalte „Nachweis“: **[A]** hier au
 | R-2 | Statisches Routing. | Profil `car`, kein Echtzeitverkehr; die Route wird einmal bei der Anlage berechnet und gespeichert (mit dem Ziel zu diesem Zeitpunkt); die Abfahrtszeit ändert sie nicht. Wird `EVENT_LAT/LON` später geändert, behalten bestehende Fahrten das alte Ziel. | [T] |
 | R-3 | **Unbehandelte Fehler (500 `internal_error`) bei gültigen, aber extremen Eingaben statt 422.** | Vier Eingabeformen: (a) `departure_time` mit Zeitzonen-Offset am Maximum (`OverflowError` in `value.astimezone(UTC)`, `POST /api/rides` und `PATCH /api/rides/{id}`), (b) `GET /api/match` mit `time_from`/`time_to` wie `9999-12-31T23:59:59-05:00` (asyncpg-Fehler), (c) `GET /api/requests/incoming\|outgoing` mit `offset` über 2^63−1 (dort fehlt die Obergrenze, die `/api/rides/mine` mit `le=1_000_000` hat; Code bestätigt **[A]**). Die Antworten geben nichts preis (generischer Body, Log nur mit Typname), aber das Vertragsversprechen (422) wird verletzt, und jeder angemeldete Nutzer kann das beliebig oft auslösen (Log-Rauschen, Fehler-Alarme). **Nicht behoben.** | [P] (c: Code [A]) |
 | R-4 | **`POST /api/rides/{id}/requests` hält während der OSRM-Aufrufe eine DB-Verbindung „idle in transaction“.** | `create_ride` und `/api/match` geben die Verbindung vor dem Routing frei (`session.rollback()`), `create_request` nicht (Code bestätigt **[A]**). Bei langsamem oder hängendem OSRM (je Aufruf bis `OSRM_TIMEOUT_S` = 5 s) können rund 15 gleichzeitige Anfragen den Pool (5 + 10 Verbindungen) für alle Endpunkte erschöpfen. Ein Ausfall wurde nicht ausgelöst, nur die gehaltenen Verbindungen wurden gemessen. **Nicht behoben.** | [P] / [A] Code |
-| R-5 | `GEOCODER=photon\|nominatim` ist ohne Wirkung. | Es gibt nur die Schnittstelle und die Standardimplementierung `none` (Karten-Klick, Kartenmitte, Koordinaten). | [T] |
+| R-5 | `GEOCODER=photon` ist ohne Wirkung; `nominatim` hängt vom öffentlichen Dienst ab. | Nur `nominatim` ist angebunden. Fällt der Dienst aus oder ist er ausgelastet, meldet die Oberfläche das und die Punktwahl per Karte, Kartenmitte und Koordinaten bleibt möglich. Die Nutzungsregeln des öffentlichen Dienstes (1 Anfrage/s, erkennbare Kennung) werden eingehalten, tragen aber nur leichte Nutzung. | [T] |
 | R-6 | **Abfahrtszeit ohne Zeitzone.** | Eingabe und Anzeige verwenden die Zeitzone des jeweiligen Browsers, ohne Hinweis im Formular oder in Listen. Fahrer und Mitfahrer mit unterschiedlicher Geräte-Zeitzone sehen dieselbe Fahrt zu verschiedenen Uhrzeiten. Die Umrechnung selbst ist korrekt (UTC im Backend); UX-Risiko, kein Datenfehler. | [P] |
 | R-7 | Einzelinstanz. | Kein Hochverfügbarkeitsbetrieb; Migrationen laufen beim API-Start (Einzelinstanz-Annahme). | [T] |
 

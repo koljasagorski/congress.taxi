@@ -168,6 +168,10 @@ jobs:
           key: osrm-hamburg-v26.4.0-1
       - name: OSRM-Daten vorbereiten (übersprungen bei Cache-Treffer)
         run: make osrm-prepare
+      # Der OSRM-Container schreibt als root (z. B. map.osrm.fileIndex ohne Leserecht für andere); ohne Leserecht
+      # scheitert das Speichern des Caches (tar "Permission denied").
+      - name: Leserechte für das Speichern des OSRM-Caches
+        run: sudo chmod -R a+rX data/osrm
       - name: Playwright installieren
         working-directory: e2e
         run: npm ci --no-audit --no-fund

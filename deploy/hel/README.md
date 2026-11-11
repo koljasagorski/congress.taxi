@@ -56,7 +56,8 @@ git archive --format=tar HEAD | ssh -J hel -i ~/.ssh/patchletter_proxmox root@10
 
 `ausrollen.sh` ist idempotent: erzeugt `.env` nur, wenn sie fehlt, setzt `APP_ENV=production`, `OSRM_PBF_URL`
 (Deutschland), `OSRM_DATA_DIR=./data/osrm-de`, `API_BIND=10.10.10.80`, `DOMAIN`, `TRUSTED_PROXIES=10.10.10.70`, bereitet OSRM nur bei fehlenden Daten vor
-und startet den Stack. Es gibt nie `.env` aus. **Immer nur einen CI-geprüften Commit ausrollen.**
+und startet den Stack. Es setzt außerdem `GEOCODER=nominatim` (Adresssuche, Betreiberfreigabe 2026-11-11; abschalten mit
+`GEOCODER=none sh deploy/hel/ausrollen.sh`). Es gibt nie `.env` aus. **Immer nur einen CI-geprüften Commit ausrollen.**
 
 ### Reverse-Proxy-Vertrauen und Rate-Limits (Phase 7)
 

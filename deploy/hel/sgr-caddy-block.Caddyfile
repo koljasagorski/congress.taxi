@@ -1,31 +1,64 @@
-
 # ── Mitfahrer-Matching 40C3 (congress.sgr.ski) — Stack in CT 220 `congress` ──
-# Ziel ist die API auf 10.10.10.80:8000 (Firewall dort: 8000 nur von sgr = 10.10.10.70, siehe
-# congress.taxi/deploy/hel/nftables.conf). Caddy terminiert TLS; es gibt bewusst keine `log`-Direktive
-# (kein Access-Log). ACHTUNG: Das allein genügt NICHT für „keine IPs/Koordinaten im Log“: Caddy schreibt auch
-# ohne `log`-Direktive jeden Fehler der Stufe ERROR (`http.log.error`), z. B. bei jedem 502 (API beim
-# Ausrollen/Neustart nicht erreichbar), samt `remote_ip`, `client_ip`, URI mit Query-String (bei /api/match:
-# lat/lon) und allen Headern (auch X-Forwarded-For). Der Block `handle_errors` unten unterdrückt diesen Eintrag
-# und gibt eine knappe Fehlerseite aus; er darf nicht entfallen (api/tests/test_security_edge_logging.py).
-# TEILSTAND: Bis das Frontend (Phase 6) und die übrigen Routen live sind, geht nur der Liveness-Pfad
-# durch; alles andere – auch /api/docs, /api/openapi.json und /api/health/ready – bleibt zu.
-congress.sgr.ski {
-	encode zstd gzip
+# Ziele in CT 220 (Firewall dort: 8000 und 8080 nur von sgr = 10.10.10.70, siehe
+# congress.taxi/deploy/hel/nftables.conf): API 10.10.10.80:8000 (alles unter /api), Web-Container
+# 10.10.10.80:8080 (Oberfläche). Caddy terminiert TLS; es gibt bewusst keine `log`-Direktive (kein
+# Access-Log). Das allein genügt NICHT für „keine IPs/Koordinaten im Log“: Caddy schreibt auch ohne `log`
+# jeden Fehler der Stufe ERROR (`http.log.error`), z. B. bei jedem 502, samt `remote_ip`, URI mit Query
+# (bei /api/match: lat/lon) und allen Headern. `import congress_error_pages` (handle_errors) unterdrückt
+# das und darf nicht entfallen (api/tests/test_security_edge_logging.py).
+# Die Snippets (congress_*) sind Kopien aus caddy/edge-hardening.Caddyfile (Test auf Gleichheit);
+# sie stehen auf oberster Ebene des Caddyfiles und gelten dort für alle Site-Blöcke.
+# Beim Ausrollen: Snippets VOR den Site-Block setzen. `/api/health/ready` bleibt von außen zu.
+
+(congress_edge_hardening) {
 	header {
 		Strict-Transport-Security "max-age=31536000"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		X-Content-Type-Options "nosniff"
-		Referrer-Policy "no-referrer"
+		X-Frame-Options "DENY"
+		Referrer-Policy "{args[0]}"
+		Permissions-Policy "geolocation=(self), camera=(), microphone=(), payment=(), usb=()"
+		-Server
 	}
-	@live path /api/health
-	handle @live {
+
+}
+
+# Fehlerseiten für den Rand (einmal im Site-Block einbinden): knapp, ohne Details, mit denselben Sicherheits-Headern.
+# Ein `handle_errors`-Block unterdrückt außerdem den ERROR-Logeintrag mit IP und Query (siehe oben).
+#   import congress_error_pages
+(congress_error_pages) {
+	handle_errors {
+		import congress_edge_hardening no-referrer
+		respond "{err.status_code} {err.status_text}" {err.status_code}
+	}
+}
+
+# Sperre für den internen Bereitschaftspfad (als eigener `handle` vor den übrigen einbinden):
+#   import congress_block_ready
+(congress_block_ready) {
+	@ready path /api/health/ready /api/health/ready/
+	handle @ready {
+		import congress_edge_hardening no-referrer
+		respond 404
+	}
+}
+
+congress.sgr.ski {
+	encode zstd gzip
+	import congress_block_ready
+	@api path /api /api/*
+	handle @api {
+		import congress_edge_hardening no-referrer
+		request_body {
+			max_size 64KB
+		}
 		reverse_proxy 10.10.10.80:8000 {
 			header_up X-Forwarded-For {remote_host}
 		}
 	}
 	handle {
-		respond "congress.sgr.ski – im Aufbau" 503
+		import congress_edge_hardening strict-origin-when-cross-origin
+		reverse_proxy 10.10.10.80:8080
 	}
-	handle_errors {
-		respond "{err.status_code} {err.status_text}" {err.status_code}
-	}
+	import congress_error_pages
 }

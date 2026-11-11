@@ -48,9 +48,12 @@ http://:8080 {
 def hel_block_for_test() -> str:
     """Den echten Rand-Block mit HTTP-Adresse und unerreichbarem Upstream versehen."""
     text = HEL_BLOCK.read_text()
-    assert "congress.sgr.ski {" in text and "10.10.10.80:8000" in text
-    return text.replace("congress.sgr.ski {", "http://:8080 {").replace(
-        "10.10.10.80:8000", "127.0.0.1:9"
+    assert "congress.sgr.ski {" in text
+    assert "10.10.10.80:8000" in text and "10.10.10.80:8080" in text
+    return (
+        text.replace("congress.sgr.ski {", "http://:8080 {")
+        .replace("10.10.10.80:8000", "127.0.0.1:9")
+        .replace("10.10.10.80:8080", "127.0.0.1:9")
     )
 
 
@@ -125,6 +128,22 @@ def test_edge_docs_do_not_claim_that_missing_log_directive_means_no_ips() -> Non
         assert "keine `log`-Direktive (keine IPs im Log)" not in text, path.name
     assert "handle_errors" in HEL_BLOCK.read_text()
     assert "congress_error_pages" in EDGE_TEMPLATE.read_text()
+
+
+def test_hel_block_snippets_are_copies_of_the_edge_template() -> None:
+    """Die Snippets im Rand-Block sind unveränderte Kopien der Vorlage (keine Drift)."""
+    template = EDGE_TEMPLATE.read_text()
+    snippets = template[template.index("(congress_edge_hardening) {") :].rstrip()
+    assert snippets in HEL_BLOCK.read_text()
+
+
+def test_hel_block_routes_api_and_spa_and_blocks_ready() -> None:
+    text = HEL_BLOCK.read_text()
+    assert "import congress_block_ready" in text
+    assert "import congress_error_pages" in text
+    assert text.count("reverse_proxy 10.10.10.80:8000") == 1
+    assert text.count("reverse_proxy 10.10.10.80:8080") == 1
+    assert "max_size 64KB" in text
 
 
 def test_probe_helper_detects_the_leak_without_handle_errors() -> None:

@@ -9,11 +9,13 @@
 # Überschreibbar per Umgebung (Standardwerte = Teilstand mit Hamburg-Extrakt):
 #   OSRM_PBF_URL  Geofabrik-Extrakt (Deutschland erst nach Ressourcenmessung, siehe PLAN.md)
 #   API_BIND      interne Adresse des Gasts (Port 8000 nur dort, Zugriff beschränkt nftables.conf)
+#   WEB_BIND      dito für den Web-Container (Port 8080)
 set -eu
 cd "$(dirname "$0")/../.."
 
 OSRM_PBF_URL="${OSRM_PBF_URL:-https://download.geofabrik.de/europe/germany/hamburg-latest.osm.pbf}"
 API_BIND="${API_BIND:-10.10.10.80}"
+WEB_BIND="${WEB_BIND:-10.10.10.80}"
 PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-congress.sgr.ski}"
 EDGE_PROXY="${EDGE_PROXY:-10.10.10.70}"
 
@@ -35,6 +37,7 @@ set_kv APP_ENV production
 set_kv COOKIE_SECURE true
 set_kv OSRM_PBF_URL "$OSRM_PBF_URL"
 set_kv API_BIND "$API_BIND"
+set_kv WEB_BIND "$WEB_BIND"
 set_kv DOMAIN "$PUBLIC_DOMAIN"
 set_kv TRUSTED_PROXIES "$EDGE_PROXY"
 

@@ -60,6 +60,9 @@ body {
   line-height: 1.55;
   color: var(--fg);
   background: var(--bg);
+  /* Reflow bei 360 px (WCAG 1.4.10): Unzerbrechliche Texte (80-Zeichen-Anzeigename, E-Mail-Adressen bis
+     320 Zeichen) brechen an beliebiger Stelle um, auch als Flex-/Grid-Kinder (anders als overflow-wrap: break-word). */
+  overflow-wrap: anywhere;
 }
 
 h1,

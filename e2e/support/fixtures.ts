@@ -95,7 +95,7 @@ interface Fixtures {
   /** Konten, die der Test anlegt, werden am Ende (best effort) per API gelöscht. */
   trackUser: (user: User) => void;
   /** Eigener Browser-Kontext (Fahrer/Mitfahrer getrennt) mit Wächter, registriert und optional angemeldet. */
-  newActor: (label: string, options?: { signIn?: boolean }) => Promise<Actor>;
+  newActor: (label: string, options?: { signIn?: boolean; user?: Partial<User> }) => Promise<Actor>;
 }
 
 export const test = base.extend<Fixtures>({
@@ -140,8 +140,11 @@ export const test = base.extend<Fixtures>({
     use,
   ) => {
     const actors: Actor[] = [];
-    const make = async (label: string, options: { signIn?: boolean } = {}): Promise<Actor> => {
-      const user = makeUser(label);
+    const make = async (
+      label: string,
+      options: { signIn?: boolean; user?: Partial<User> } = {},
+    ): Promise<Actor> => {
+      const user = { ...makeUser(label), ...options.user };
       const context = await newContext(browser, {
         baseURL: baseURL!,
         locale: locale ?? "de-DE",

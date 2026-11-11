@@ -328,7 +328,11 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
   ≈ 20 s ohne Cache). Timeout 25 min. Caches: Chromium (`~/.cache/ms-playwright`, Schlüssel aus `e2e/package-lock.json`), npm, OSRM-Daten
   (Schlüssel `osrm-hamburg-v26.4.0-1`; beim ersten Lauf scheiterte das Speichern an root-eigenen Dateien, behoben). Bericht, Spuren und
   Bilder werden nur bei Fehlern als Artefakt `e2e-fehlerbericht` hochgeladen (nie `e2e/.stack` mit den Secrets).
-- Nicht geprüft: Firefox/WebKit, Mobil-Viewport, echte Kacheln, TLS.
+- **Reflow 360 px (FE-1, nachgezogen):** `body { overflow-wrap: anywhere; }` in `web/src/styles.css`. Ohne Umbruchregel machten ein
+  80-Zeichen-Anzeigename ohne Leerzeichen und lange E-Mail-Adressen (Kontaktfreigabe, Kopfzeile, Trefferliste) die Seite bei 360 px
+  horizontal scrollbar (WCAG 1.4.10); eine normale 41-Zeichen-Adresse reichte schon. Test: `e2e/tests/05-schmale-ansicht.spec.ts`
+  (Viewport 360×740, Kopfzeile, Trefferliste, Kontaktfreigabe beider Seiten; vor dem Fix rot, danach grün). Nur dieser eine Test läuft mobil.
+- Nicht geprüft: Firefox/WebKit, weitere Mobil-Viewports, echte Kacheln, TLS.
 
 ## Deployment auf Proxmox (hel) – Teilstand ausgeführt am 2026-11-10
 

@@ -32,6 +32,7 @@ Die Produktions-Standardwerte (`.env.example`, `docker-compose.yml`) bleiben unv
 - `tests/02-mitfahrt-und-kontaktfreigabe.spec.ts`: Fahrer und Mitfahrer in zwei Browser-Kontexten; Treffer mit Umweg, Anfrage, Annahme; E-Mail der Gegenseite erst danach (DOM **und** mitgeschnittene API-Antworten)
 - `tests/03-konto-loeschen.spec.ts`: Konto löschen; kein Login mehr, Daten weg, Sitze wieder frei
 - `tests/04-extern-und-tastatur.spec.ts`: keine externen Requests außer dem Kachelserver; Tastaturbedienung der Hauptformulare
+- `tests/05-schmale-ansicht.spec.ts`: Reflow bei 360×740 (WCAG 1.4.10): 80-Zeichen-Anzeigename und ca. 100 Zeichen lange E-Mail-Adressen in Kopfzeile, Trefferliste und Kontaktfreigabe erzeugen keinen horizontalen Scroll
 - `support/`: Fixtures (Netzwerkwächter, Konten, zweiter Kontext), API-Helfer, Zeit, UI-Helfer. Die Texte kommen aus `web/src/i18n/de.ts`.
 
 ## Regeln für neue Tests
@@ -47,7 +48,7 @@ Die Produktions-Standardwerte (`.env.example`, `docker-compose.yml`) bleiben unv
 
 ## Bekannte Grenzen
 
-- Nur Chromium (Desktop-Viewport 1280×900, `de-DE`, `Europe/Berlin`). Kein Mobil-Viewport, kein Firefox/WebKit.
+- Nur Chromium (Desktop-Viewport 1280×900, `de-DE`, `Europe/Berlin`). Mobil nur im Test `05` (360×740), sonst kein Mobil-Viewport; kein Firefox/WebKit.
 - Das Feld „Abfahrt“ (`datetime-local`) besteht aus mehreren Tab-Stopps und wird in den Tastaturtests per `fill()` gesetzt.
 - Die Routenvorschau erscheint im Produkt erst **nach** dem Speichern der Fahrt (Erfolgsseite), nicht schon davor.
 - Echte Kartenkacheln und TLS (Let's Encrypt) sind nicht Teil dieser Tests.

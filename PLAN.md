@@ -272,6 +272,11 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
   fälschlich nicht erlaubt -> Verstoß gemeldet).
 - Abweichung vom Auftrag: Die Routenvorschau gibt es im Produkt erst nach dem Speichern (Erfolgsseite mit Polyline, km und Minuten); der
   Test prüft genau das. Der Datumseingabe-Test per Tastatur setzt das `datetime-local`-Feld mit `fill()`.
+- **CI (GitHub Actions, ubuntu-latest amd64): Job `e2e` grün**, 6 Tests, Playwright-Lauf ≈ 8 s, Gesamtdauer des Jobs ≈ 1 min 45 s bis
+  1 min 51 s (Runs 42979852500 und 42980411936; Hamburg-Download + OSRM-Aufbereitung ≈ 20 s, Stack-Build ≈ 80 s, Chromium-Installation
+  ≈ 20 s ohne Cache). Timeout 25 min. Caches: Chromium (`~/.cache/ms-playwright`, Schlüssel aus `e2e/package-lock.json`), npm, OSRM-Daten
+  (Schlüssel `osrm-hamburg-v26.4.0-1`; beim ersten Lauf scheiterte das Speichern an root-eigenen Dateien, behoben). Bericht, Spuren und
+  Bilder werden nur bei Fehlern als Artefakt `e2e-fehlerbericht` hochgeladen (nie `e2e/.stack` mit den Secrets).
 - Nicht geprüft: Firefox/WebKit, Mobil-Viewport, echte Kacheln, TLS.
 
 ## Deployment auf Proxmox (hel) – Teilstand ausgeführt am 2026-11-10

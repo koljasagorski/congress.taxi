@@ -178,7 +178,7 @@ dann ≥ 8 GB RAM. **Lokal getestet wird ausschließlich das Hamburg-Extrakt (54
 - [x] **Phase 5** Anfragen/Accept mit Locking, Kontaktfreigabe (E-Mail erst bei `accepted`, nur Beteiligte; grobe Umweg-Werte)
 - [x] **Phase 6** Frontend (React/Vite/TypeScript/Leaflet, `web/`), Container `web`, Caddy liefert es aus, CI-Job `web`
 - [x] **Phase 7** Retention-Cleanup, Backup (age), Security-Header, Rate-Limits (IP, E-Mail, Nutzer), Caddy
-- [ ] Phase 8 E2E-Tests, README, Datenschutzdoku, Aufräumen
+- [ ] Phase 8 E2E-Tests (**erledigt**, `e2e/`, CI-Job `e2e`), README, Datenschutzdoku, Aufräumen (offen)
 
 Jede Phase: eigener Conventional-Commit, grüne Tests, sofort pushen.
 
@@ -261,6 +261,18 @@ Der Lauf in einem Proxmox-LXC mit Hamburg-Extrakt wurde am 2026-11-10 geprüft (
 - **Nicht geprüft:** Verhalten in einem echten Browser (der Playwright-Browser war in dieser Umgebung nicht verfügbar): CSP-Verstöße
   in der Konsole, Kartendarstellung, Tastaturbedienung – die Komponenten sind nur in jsdom getestet. Let's-Encrypt/TLS am `web`-Pfad.
   Frontend auf `hel`: nicht ausgerollt, der Rand-Caddy reicht weiter nur `/api/health` durch (siehe `deploy/hel/README.md`).
+
+### Phase 8, Teil E2E (lokal: macOS arm64, Docker Desktop, echtes PostGIS + OSRM Hamburg + Chromium)
+
+- `make e2e` startet das eigene Compose-Projekt `mitfahrer-e2e` (`e2e/stack.sh`; Caddy auf `http://127.0.0.1:18080`, Rate-Limits nur dort
+  angehoben, Kachel-Host `tiles.e2e.invalid` wird im Test beantwortet) und führt Playwright 1.64.1 (Chromium) aus.
+  **6 Tests grün** (4 Dateien: Konto+Fahrt, Mitfahrt+Kontaktfreigabe, Konto löschen, externe Requests+Tastatur), Testlauf ≈ 4 s;
+  kalter Gesamtlauf `make e2e` (Stack bauen/starten + Tests) ≈ 24 s. Dreimal hintereinander ohne Fehler.
+- Negativprüfungen wurden absichtlich gebrochen und schlugen fehl (E-Mail-Prüfung auf eine Antwort mit der eigenen Adresse; Kachel-Host
+  fälschlich nicht erlaubt -> Verstoß gemeldet).
+- Abweichung vom Auftrag: Die Routenvorschau gibt es im Produkt erst nach dem Speichern (Erfolgsseite mit Polyline, km und Minuten); der
+  Test prüft genau das. Der Datumseingabe-Test per Tastatur setzt das `datetime-local`-Feld mit `fill()`.
+- Nicht geprüft: Firefox/WebKit, Mobil-Viewport, echte Kacheln, TLS.
 
 ## Deployment auf Proxmox (hel) – Teilstand ausgeführt am 2026-11-10
 

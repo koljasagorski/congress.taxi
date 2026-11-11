@@ -1,0 +1,20 @@
+# Override NUR für den E2E-Stack (e2e/stack.sh). Nie für Entwicklung oder Produktion verwenden.
+#
+# Aufruf (macht stack.sh):
+#   docker compose -p mitfahrer-e2e --env-file e2e/.stack/e2e.env \
+#     -f docker-compose.yml -f docker-compose.proxy.yml -f e2e/docker-compose.e2e.yml --profile proxy ...
+#
+# Warum: Die Basis-Datei liest die Container-Konfiguration fest aus ".env" (das ist der Dev-Stack).
+# Der E2E-Stack bekommt eine eigene Datei mit eigenen Ports, angehobenen Rate-Limits und
+# HTTP-Betrieb ohne TLS. Produktions-Standardwerte bleiben unberührt.
+services:
+  api:
+    env_file: !override
+      - ./e2e/.stack/e2e.env
+  cleanup:
+    env_file: !override
+      - ./e2e/.stack/e2e.env
+  caddy:
+    # Nur der HTTP-Port, nur auf localhost (die Basis veröffentlicht HTTP und HTTPS auf allen Adressen)
+    ports: !override
+      - "127.0.0.1:${HTTP_PORT}:${HTTP_PORT}"

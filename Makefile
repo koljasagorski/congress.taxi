@@ -7,7 +7,7 @@ COMPOSE := docker compose
 .PHONY: help env fill-secrets up down restart logs ps build migrate db-up test lint fmt osrm-prepare seed-demo clean-data
 
 help: ## Diese Hilfe
-	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
 
 env: ## .env mit Zufalls-Secrets erzeugen (make env DEV=1: Hamburg-Extrakt, Development-Modus)
 	@sh scripts/init-env.sh $(if $(DEV),dev,prod)
@@ -85,3 +85,23 @@ web-install: ## Frontend-Abhängigkeiten installieren (npm ci in web/)
 
 web-check: ## Frontend prüfen: tsc, eslint, vitest, Build, check:external (wie CI)
 	cd web && npx tsc --noEmit && npm run lint && npm test && npm run build && npm run check:external
+
+# --- E2E (Phase 8) ---
+# Playwright gegen den echten Stack (Caddy -> SPA + API -> PostGIS + OSRM Hamburg). Eigenes Compose-Projekt
+# "mitfahrer-e2e" mit eigenen Ports (18080/55433/55001) und angehobenen Rate-Limits NUR dafür; der Dev-Stack und
+# die Produktions-Standardwerte bleiben unberührt. Voraussetzung: make osrm-prepare (Hamburg), Docker, Node >= 22.
+.PHONY: e2e e2e-up e2e-down e2e-logs
+
+e2e-up: ## E2E-Stack starten (Projekt mitfahrer-e2e, HTTP auf 127.0.0.1:18080)
+	@sh e2e/stack.sh up
+
+e2e-down: ## E2E-Stack stoppen und seine Volumes entfernen (nur Projekt mitfahrer-e2e)
+	@sh e2e/stack.sh down
+
+e2e-logs: ## Logs des E2E-Stacks
+	@sh e2e/stack.sh logs
+
+e2e: e2e-up ## Playwright-E2E (startet/prüft den Stack, installiert Chromium; E2E_ARGS="-g Suchwort")
+	cd e2e && if [ ! -d node_modules ]; then npm ci --no-audit --no-fund; fi
+	cd e2e && npx playwright install chromium
+	cd e2e && BASE_URL="$$(sh stack.sh url)" npx playwright test $(E2E_ARGS)

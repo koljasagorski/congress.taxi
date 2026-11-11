@@ -11,6 +11,8 @@ Siehe Phasen-Checkliste in `PLAN.md`. Jede Phase = ein Conventional-Commit, grü
 
 - `make env DEV=1` · `make osrm-prepare` · `make up` · `make test` · `make lint` · `make web-check` (Frontend: tsc, eslint, vitest, Build, check:external; alles in `Makefile`)
 - Tests brauchen laufende DB (`make test` startet sie) und lesen `.env`.
+- `make e2e` (Playwright, `e2e/`): startet ein eigenes Compose-Projekt `mitfahrer-e2e` (Port 18080, angehobene Rate-Limits nur dort,
+  Kachel-Host wird im Test abgefangen), braucht `make osrm-prepare` (Hamburg) und Docker; `make e2e-down` räumt auf. Details: `e2e/README.md`.
 
 ## Fallstricke (bereits erlebt)
 

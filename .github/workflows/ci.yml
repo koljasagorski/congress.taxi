@@ -106,7 +106,7 @@ jobs:
       - name: age installieren (Backup-Verschlüsselung)
         run: sudo apt-get update && sudo apt-get install -y age
       - name: shellcheck
-        run: shellcheck -x scripts/backup.sh scripts/restore.sh caddy/entrypoint.sh caddy/tile-origin.sh
+        run: shellcheck -x scripts/backup.sh scripts/restore.sh caddy/entrypoint.sh caddy/tile-origin.sh e2e/stack.sh
       - run: cd api && uv sync --frozen
       - name: Compose-Datei validieren (ohne Ausgabe der Werte)
         run: |
@@ -141,3 +141,71 @@ jobs:
       - run: npm run check:external
       - name: Container-Image bauen (nginx, baut und prüft die SPA erneut)
         run: docker build --pull -t mitfahrer-web:ci .
+
+  # --- e2e (Phase 8): Playwright gegen den echten Stack (Caddy -> SPA + API -> PostGIS + OSRM Hamburg) ---
+  # Eigenes Compose-Projekt "mitfahrer-e2e" (e2e/stack.sh): HTTP ohne TLS, Kachelserver ist ein Platzhalter-Host,
+  # den die Tests selbst beantworten (kein Internet nötig), Rate-Limits nur hier angehoben.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - name: Konfiguration für die OSRM-Vorbereitung erzeugen (make env DEV=1, Hamburg-Extrakt)
+        run: sh scripts/init-env.sh dev
+      # Die aufbereiteten Hamburg-Daten ändern sich für die Tests nicht; der Schlüssel enthält die OSRM-Version.
+      # Bei einem Treffer überspringt make osrm-prepare Download und Aufbereitung von selbst.
+      - name: OSRM-Daten aus dem Cache holen
+        uses: actions/cache@v6.1.0
+        with:
+          path: data/osrm
+          key: osrm-hamburg-v26.4.0-1
+      - name: OSRM-Daten vorbereiten (übersprungen bei Cache-Treffer)
+        run: make osrm-prepare
+      - name: Playwright installieren
+        working-directory: e2e
+        run: npm ci --no-audit --no-fund
+      - name: Browser-Cache
+        id: browsers
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
+      - name: Chromium installieren (mit Systemabhängigkeiten)
+        if: steps.browsers.outputs.cache-hit != 'true'
+        working-directory: e2e
+        run: npx playwright install --with-deps chromium
+      - name: Systemabhängigkeiten für Chromium (Browser aus dem Cache)
+        if: steps.browsers.outputs.cache-hit == 'true'
+        working-directory: e2e
+        run: npx playwright install-deps chromium
+      - name: Typen der Tests prüfen
+        working-directory: e2e
+        run: npm run typecheck
+      - name: E2E-Stack starten
+        run: sh e2e/stack.sh up
+      - name: Playwright-Tests
+        working-directory: e2e
+        run: npx playwright test
+        env:
+          BASE_URL: http://127.0.0.1:18080
+      - name: Stack-Logs bei Fehler
+        if: failure()
+        run: sh e2e/stack.sh logs
+      # Nur Bericht, Spuren und Bilder (nie e2e/.stack mit den Zufalls-Secrets)
+      - name: Bericht, Spuren und Bilder bei Fehler
+        if: failure()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: e2e-fehlerbericht
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 7
+          if-no-files-found: ignore

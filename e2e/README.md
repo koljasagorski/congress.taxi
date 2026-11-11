@@ -21,6 +21,7 @@ make e2e-down       # E2E-Stack stoppen und seine Volumes entfernen
 | Konfiguration | `e2e/.stack/e2e.env` (Zufalls-Secrets, nicht im Git, Rechte 600) |
 | Rate-Limits | **nur in diesem Stack** angehoben (alle Browser teilen sich eine Client-IP; Standard: Registrierung 10/h je IP) |
 | Netz | `172.29.72.0/24` (kollidiert nicht mit dem Standard `172.29.71.0/24`) |
+| Zweiter Lauf daneben | `E2E_PROJECT` (Standard `mitfahrer-e2e`) und `E2E_SUBNET` (/24-Präfix, Standard `172.29.72`) plus die drei Ports ändern, z. B. wenn ein zweiter Klon testet, während der Stack des ersten noch läuft; sonst übernähme der Lauf dessen Projekt, Volumes und Netz |
 
 Die Produktions-Standardwerte (`.env.example`, `docker-compose.yml`) bleiben unverändert; alle Abweichungen stehen in
 `e2e/stack.sh` und `e2e/docker-compose.e2e.yml`. Gegen einen anderen Stack: `BASE_URL=… npx playwright test` (dessen

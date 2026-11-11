@@ -8,12 +8,16 @@
 #   sh e2e/stack.sh ps      Containerstatus
 #
 # Ports (nur localhost): E2E_HTTP_PORT (Standard 18080), E2E_DB_PORT (55433), E2E_OSRM_PORT (55001).
+# Zweiter Klon/Lauf neben einem bestehenden E2E-Stack: E2E_PROJECT (Standard mitfahrer-e2e), E2E_SUBNET (/24-Präfix
+# des Caddy-Netzes, Standard 172.29.72) und die drei Ports ändern – sonst übernähme der Lauf das Projekt, die Volumes
+# und das Netz des anderen Stacks.
 # Voraussetzung: vorbereitete OSRM-Daten (make osrm-prepare, Hamburg-Extrakt) in data/osrm bzw. E2E_OSRM_DATA_DIR.
 # Dev-Stack (Projekt "mitfahrer") und alles andere wird nicht angefasst; down löscht nur Volumes dieses Projekts.
 set -eu
 cd "$(dirname "$0")/.."
 
-PROJECT="mitfahrer-e2e"
+PROJECT="${E2E_PROJECT:-mitfahrer-e2e}"
+SUBNET="${E2E_SUBNET:-172.29.72}"
 STACK_DIR="e2e/.stack"
 ENV_FILE="$STACK_DIR/e2e.env"
 P_HTTP="${E2E_HTTP_PORT:-18080}"
@@ -28,6 +32,12 @@ if [ "$PROJECT" = "mitfahrer" ]; then
   echo "FEHLER: Projektname darf nicht 'mitfahrer' sein." >&2
   exit 1
 fi
+case "$SUBNET" in
+  *[!0-9.]* | "")
+    echo "FEHLER: E2E_SUBNET muss ein /24-Präfix wie 172.29.72 sein." >&2
+    exit 1
+    ;;
+esac
 
 # Umgebungsvariablen der Shell schlagen --env-file und -f: ausschalten.
 unset COMPOSE_FILE COMPOSE_PROFILES COMPOSE_PROJECT_NAME COMPOSE_ENV_FILES
@@ -69,9 +79,9 @@ make_env() {
     echo "ALLOWED_ORIGINS=http://127.0.0.1:$P_HTTP,http://localhost:$P_HTTP"
     echo "CADDY_HSTS=max-age=0"
     # Eigenes Subnetz, damit der Stack nicht mit dem Standard (172.29.71.0/24) kollidiert
-    echo "CADDY_SUBNET=172.29.72.0/24"
-    echo "CADDY_IPV4=172.29.72.2"
-    echo "CADDY_IP_RANGE=172.29.72.128/25"
+    echo "CADDY_SUBNET=$SUBNET.0/24"
+    echo "CADDY_IPV4=$SUBNET.2"
+    echo "CADDY_IP_RANGE=$SUBNET.128/25"
     # Kachelserver: Platzhalter-Host; die Tests beantworten die Anfragen selbst (kein Internet nötig)
     echo "TILE_URL=$TILE_URL_E2E"
     # Angehobene Rate-Limits NUR für den Testlauf (alle Browser teilen sich eine Client-IP)

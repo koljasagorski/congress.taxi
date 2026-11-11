@@ -69,7 +69,20 @@ class Settings(BaseSettings):
     tile_attribution: str = (
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
     )
+    #: Adresssuche. ``nominatim`` schaltet ``GET /api/geocode`` ein (serverseitig, siehe
+    #: ``app/geocoding.py``); ``none`` und ``photon`` (nicht angebunden) lassen sie aus.
     geocoder: Literal["none", "photon", "nominatim"] = "none"
+    #: Basis-URL des Nominatim-Servers. Der öffentliche Dienst ist nur für leichte Nutzung gedacht
+    #: (max. 1 Anfrage/s, wird eingehalten); bei viel Last einen eigenen Server eintragen.
+    geocoder_url: str = "https://nominatim.openstreetmap.org"
+    geocoder_timeout_s: float = Field(default=5.0, gt=0)
+    #: Kennung der Anwendung gegenüber dem Geocoder (Nutzungsregel des öffentlichen Dienstes).
+    #: Bewusst ohne Betreiber-Kontaktdaten; wer sie angeben will, ergänzt sie hier.
+    geocoder_user_agent: str = "mitfahrer-matching-40c3/0.1 (self-hosted ride matching)"
+    #: Ergebnisse nur aus diesen Ländern (ISO-3166-1-Alpha-2, kleingeschrieben, Komma-getrennt).
+    geocoder_country_codes: str = "de"
+    #: So lange werden Treffer einer Suche im Arbeitsspeicher gehalten (Sekunden).
+    geocoder_cache_ttl_s: float = Field(default=600.0, ge=0)
 
     # Auth
     jwt_secret: SecretStr = SecretStr("CHANGE_ME")
@@ -95,6 +108,8 @@ class Settings(BaseSettings):
     rate_limit_login_fail_per_email_per_min: int = Field(default=30, gt=0)
     #: zusätzlich zum IP-Limit (Phase 7): je Nutzer
     rate_limit_match_user_per_min: int = Field(default=20, gt=0)
+    #: Adresssuche je Nutzer (der Geocoder wird zusätzlich auf 1 Anfrage/s gedrosselt)
+    rate_limit_geocode_user_per_min: int = Field(default=10, gt=0)
     rate_limit_rides_create_per_hour: int = Field(default=20, gt=0)
     rate_limit_requests_create_per_hour: int = Field(default=30, gt=0)
 

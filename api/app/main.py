@@ -7,11 +7,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 
-from app.api import auth, health, match, me, requests, rides
+from app.api import auth, geocode, health, match, me, requests, rides
 from app.api import config as config_api
 from app.config import Settings, get_settings
 from app.db import dispose_engine
 from app.errors import install_error_handlers
+from app.geocoding import close_geocoder
 from app.middleware.security import install_security
 from app.routing import close_routing_client
 
@@ -23,6 +24,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     get_settings()  # Konfigurationsfehler (z. B. Platzhalter-Secrets) sofort beim Start melden
     yield
     await close_routing_client()
+    await close_geocoder()
     await dispose_engine()
 
 
@@ -82,6 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(me.router)
     app.include_router(rides.router)
     app.include_router(match.router)
+    app.include_router(geocode.router)
     app.include_router(requests.router)
     return app
 
